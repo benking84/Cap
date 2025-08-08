@@ -1,26 +1,13 @@
+import { drizzle } from "drizzle-orm/mysql2";
+import mysql from "mysql2/promise";
 import { serverEnv } from "@cap/env";
-import { Client, type Config } from "@planetscale/database";
 import { sql } from "drizzle-orm";
 import type { AnyMySqlColumn } from "drizzle-orm/mysql-core";
-import { drizzle } from "drizzle-orm/planetscale-serverless";
 
 function createDrizzle() {
-	const URL = serverEnv().DATABASE_URL;
-
-	let fetchHandler: Promise<Config["fetch"]> | undefined;
-
-	if (URL.startsWith("mysql://")) {
-		fetchHandler = import("@mattrax/mysql-planetscale").then((m) =>
-			m.createFetchHandler(URL),
-		);
-	}
-
-	const connection = new Client({
-		url: URL,
-		fetch: async (input, init) => {
-			return await ((await fetchHandler) || fetch)(input, init);
-		},
-	});
+  const connection = mysql.createPool({
+    uri: serverEnv().DATABASE_URL,
+  });
 
 	return drizzle(connection);
 }
