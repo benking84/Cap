@@ -1,16 +1,16 @@
 import { instrumentDrizzleClient } from "@kubiks/otel-drizzle";
+import { drizzle } from "drizzle-orm/mysql2";
+import mysql from "mysql2/promise";
+import { serverEnv } from "@cap/env";
 import { sql } from "drizzle-orm";
 import type { AnyMySqlColumn } from "drizzle-orm/mysql-core";
-import { drizzle } from "drizzle-orm/mysql2";
 
 function createDrizzle() {
-	const url = process.env.DATABASE_URL;
-	if (!url) throw new Error("DATABASE_URL not found");
+  const connection = mysql.createPool({
+    uri: serverEnv().DATABASE_URL,
+  });
 
-	if (!url.startsWith("mysql://"))
-		throw new Error("DATABASE_URL is not a MySQL URL");
-
-	return drizzle(url);
+	return drizzle(connection);
 }
 
 let _cached: ReturnType<typeof createDrizzle> | undefined;
