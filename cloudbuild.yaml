@@ -21,14 +21,14 @@ steps:
 
   # Build the Docker image for web app
   - name: 'gcr.io/cloud-builders/docker'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        DOCKER_BUILDKIT=1 docker build \
-          -t '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE_NAME}:$COMMIT_SHA' \
-          . \
-          -f 'apps/web/Dockerfile'
+    args: [
+      'build',
+      '-t',
+      '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE_NAME}:$COMMIT_SHA',
+      '.',
+      '-f',
+      'apps/web/Dockerfile'
+    ]
     id: 'Build-Web'
 
   # Push the Docker image for web app to Artifact Registry
