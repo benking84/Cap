@@ -64,15 +64,9 @@ steps:
     args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/cap-tasks:$COMMIT_SHA']
     id: 'Push-Tasks'
 
-<<<<<<< HEAD
   # Create GCS bucket for Terraform state
   - name: 'gcr.io/cloud-builders/gcloud'
     entrypoint: 'bash'
-=======
-  # Run Terraform
-  - name: 'hashicorp/terraform:1.0.0'
-    entrypoint: 'sh'
->>>>>>> f166e575 (fix(terraform): correct syntax for replication block)
     args:
       - '-c'
       - |
