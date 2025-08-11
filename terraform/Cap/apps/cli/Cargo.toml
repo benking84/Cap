@@ -1,0 +1,26 @@
+[package]
+name = "cap"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.5.23", features = ["derive"] }
+cap-utils = { path = "../../crates/utils" }
+cap-project = { path = "../../crates/project" }
+cap-rendering = { path = "../../crates/rendering" }
+cap-editor = { path = "../../crates/editor" }
+cap-media = { path = "../../crates/media" }
+cap-flags = { path = "../../crates/flags" }
+cap-recording = { path = "../../crates/recording" }
+cap-export = { path = "../../crates/export" }
+cap-camera = { path = "../../crates/camera" }
+serde = { workspace = true }
+serde_json = "1.0.133"
+tokio.workspace = true
+editor = "0.1.1"
+scap.workspace = true
+uuid = { version = "1.11.1", features = ["v4"] }
+ffmpeg = { workspace = true }
+tracing.workspace = true
+tracing-subscriber = "0.3.19"
+flume.workspace = true
