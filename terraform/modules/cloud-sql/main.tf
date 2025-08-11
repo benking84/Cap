@@ -1,11 +1,33 @@
+resource "google_secret_manager_secret" "db_password_secret" {
+  secret_id  = "db-password"
+  replication {
+    user_managed {
+      replicas {
+        location = "australia-southeast1"
+      }
+    }
+  }
+}
+
+resource "google_secret_manager_secret" "db_user_secret" {
+  secret_id  = "db-user"
+  replication {
+    user_managed {
+      replicas {
+        location = "australia-southeast1"
+      }
+    }
+  }
+}
+
 resource "google_sql_database_instance" "main" {
-  project             = var.project_id
-  name                = "private-db-instance"
-  database_version    = "POSTGRES_13"
-  region              = var.region
+  name             = "cap-sql-instance"
+  database_version = "MYSQL_8_0"
+  region           = var.region
 
   settings {
-    tier = "db-g1-small"
+    tier = "db-f1-micro"
+
     ip_configuration {
       ipv4_enabled    = false
       private_network = var.network_id
@@ -15,48 +37,13 @@ resource "google_sql_database_instance" "main" {
   deletion_protection = false
 }
 
-resource "google_sql_database" "main" {
-  project  = var.project_id
-  instance = google_sql_database_instance.main.name
-  name     = "private-db"
-}
-
-resource "random_password" "db_password" {
-  length  = 16
-  special = true
-}
-
-resource "google_secret_manager_secret" "db_password_secret" {
-  project_id = var.project_id
-  secret_id  = "db-password"
-
-  replication {
-    automatic = true
-  }
-}
-
-resource "google_secret_manager_secret_version" "db_password_secret_version" {
-  secret      = google_secret_manager_secret.db_password_secret.id
-  secret_data = random_password.db_password.result
-}
-
-resource "google_secret_manager_secret" "db_user_secret" {
-  project_id = var.project_id
-  secret_id  = "db-user"
-
-  replication {
-    automatic = true
-  }
-}
-
-resource "google_secret_manager_secret_version" "db_user_secret_version" {
-  secret      = google_secret_manager_secret.db_user_secret.id
-  secret_data = var.db_user
-}
-
-resource "google_sql_user" "main" {
-  project  = var.project_id
-  instance = google_sql_database_instance.main.name
+resource "google_sql_user" "default" {
   name     = var.db_user
-  password = random_password.db_password.result
+  instance = google_sql_database_instance.main.name
+  password = "changeme-password"
+}
+
+resource "google_sql_database" "main" {
+  name     = "capdb"
+  instance = google_sql_database_instance.main.name
 }
