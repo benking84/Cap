@@ -1,0 +1,50 @@
+FROM node:20-alpine AS base
+RUN apk add --no-cache libc6-compat && corepack enable
+
+# ---------- builder ----------
+FROM base AS builder
+WORKDIR /app
+
+# 1) Copy manifests first for layer caching
+COPY package.json pnpm-workspace.yaml* pnpm-lock.yaml* ./
+COPY apps/*/package.json apps/
+COPY packages/*/package.json packages/
+
+# 2) First install to warm the store (works great with BuildKit cache)
+RUN corepack enable pnpm \
+ && (pnpm install --frozen-lockfile || pnpm install --no-frozen-lockfile)
+
+# 3) Now copy the full source
+COPY . .
+
+# 4) Second install after full source so workspace bins (next, turbo) are present
+#    Use filters to keep it quick if you like
+RUN pnpm install --recursive --prefer-offline --no-frozen-lockfile
+
+# 5) Build the web app
+ARG NEXT_PUBLIC_DOCKER_BUILD=true
+ENV NEXT_PUBLIC_DOCKER_BUILD=$NEXT_PUBLIC_DOCKER_BUILD
+ENV NEXT_PUBLIC_WEB_URL=http://localhost:3000
+ENV NEXT_PUBLIC_CAP_AWS_BUCKET=capso
+ENV NEXT_PUBLIC_CAP_AWS_REGION=us-east-1
+
+RUN pnpm run -w build:web
+
+
+# ---------- runner ----------
+FROM base AS runner
+WORKDIR /app
+
+# Run as non-root
+RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
+
+# Next.js standalone output
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
+# If your runtime needs migrations at container start, keep this:
+COPY --from=builder --chown=nextjs:nodejs /app/packages/database/migrations ./apps/web/migrations
+
+USER nextjs
+EXPOSE 3000
+CMD HOSTNAME="0.0.0.0" node apps/web/server.js

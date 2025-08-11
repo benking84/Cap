@@ -1,0 +1,11 @@
+project_id               = "aviato-cap-dev"
+region                   = "australia-southeast1"
+network_id               = "projects/aviato-cap-dev/global/networks/cap-vpc"
+network_name             = "cap-vpc"
+service_name             = "cap-cloudrun-service"
+db_user                  = "capadmin"
+db_password              = "changeme@123" # Replace if needed
+db_name                  = "capdb"
+db_user_secret_id        = "cap-db-user"
+db_password_secret_id    = "cap-db-password"
+vpc_connector_id         = "projects/aviato-cap-dev/locations/australia-southeast1/connectors/cap-vpc-connector"

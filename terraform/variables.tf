@@ -8,3 +8,11 @@ variable "region" {
   type        = string
   default     = "us-central1"
 }
+
+variable "db_user" {
+  type = string
+}
+
+variable "network_id" {
+  type = string
+}
