@@ -1,0 +1,21 @@
+substitutions:
+  _PROJECT_ID: "aviato-cap-dev"
+  _TAG: "$BUILD_ID" # default, will be overridden if passed in CLI
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    env:
+      - DOCKER_BUILDKIT=1
+    args:
+      - build
+      - -t
+      - gcr.io/${_PROJECT_ID}/cap-web:${_TAG}
+      - -f
+      - Dockerfile.web
+      - .
+
+images:
+  - gcr.io/${_PROJECT_ID}/cap-web:${_TAG}
+
+
+
