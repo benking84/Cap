@@ -30,7 +30,8 @@ resource "google_secret_manager_secret" "db_password_secret" {
   secret_id  = "db-password"
 
   replication {
-    automatic {}
+
+    automatic = {}
   }
 }
 
@@ -43,7 +44,7 @@ resource "google_secret_manager_secret" "db_user_secret" {
   secret_id  = "db-user"
 
   replication {
-    automatic {}
+    automatic = {}
   }
 }
 
