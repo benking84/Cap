@@ -28,7 +28,6 @@ resource "random_password" "db_password" {
 
 resource "google_secret_manager_secret" "db_password_secret" {
   secret_id  = "db-password"
-
 }
 
 resource "google_secret_manager_secret_version" "db_password_secret_version" {
