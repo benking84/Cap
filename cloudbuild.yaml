@@ -107,7 +107,11 @@ steps:
       - |
         gcloud projects add-iam-policy-binding ${PROJECT_ID} --member=serviceAccount:1062316443287-compute@developer.gserviceaccount.com --role=roles/editor || true
   # Run Terraform
+<<<<<<< HEAD
   - name: 'hashicorp/terraform:1.12.2'
+=======
+  - name: 'hashicorp/terraform:1.8.0'
+>>>>>>> 705063e2 (fix(cloudbuild): update terraform version and fix replication syntax)
     entrypoint: 'sh'
     args:
       - '-c'
