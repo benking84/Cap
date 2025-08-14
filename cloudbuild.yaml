@@ -58,7 +58,7 @@ steps:
     id: 'Push-Tasks'
 
   # Run Terraform
-  - name: 'hashicorp/terraform:1.8.0'
+  - name: 'hashicorp/terraform:1.12.2'
     entrypoint: 'sh'
     args:
       - '-c'
