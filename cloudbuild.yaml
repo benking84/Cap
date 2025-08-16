@@ -21,6 +21,8 @@ steps:
 
   # Build the Docker image for web app
   - name: 'gcr.io/cloud-builders/docker'
+    env:
+      - 'DOCKER_BUILDKIT=1'
     args: [
       'build',
       '-t',
@@ -29,7 +31,6 @@ steps:
       '-f',
       'apps/web/Dockerfile'
     ]
-
     id: 'Build-Web'
 
   # Push the Docker image for web app to Artifact Registry
@@ -39,9 +40,8 @@ steps:
 
   # Build the Docker image for tasks app
   - name: 'gcr.io/cloud-builders/docker'
-
-    entrypoint: 'bash'
-
+    env:
+      - 'DOCKER_BUILDKIT=1'
     args: [
       'build',
       '-t',
@@ -57,9 +57,16 @@ steps:
     args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/cap-tasks:$COMMIT_SHA']
     id: 'Push-Tasks'
 
-  # Run Terraform
-  - name: 'hashicorp/terraform:1.0.0'
+  # Create GCS bucket for Terraform state
+  - name: 'gcr.io/cloud-builders/gcloud'
     entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud storage buckets create gs://${_TERRAFORM_STATE_BUCKET} --project=${PROJECT_ID} --location=${_REGION} || true
+  # Run Terraform
+  - name: 'hashicorp/terraform:1.12.2'
+    entrypoint: 'sh'
     args:
       - '-c'
       - |
@@ -90,6 +97,7 @@ substitutions:
   _REPOSITORY: 'cloud-run-repo'
   _IMAGE_NAME: 'cap-web'
   _WEB_URL: 'https://your-app-url.com' # TODO: Replace with your actual URL
+  _TERRAFORM_STATE_BUCKET: 'aviato-cap-terrafor-state'
 
 images:
 - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE_NAME}:$COMMIT_SHA'
