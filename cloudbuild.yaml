@@ -57,6 +57,7 @@ steps:
     args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/cap-tasks:$COMMIT_SHA']
     id: 'Push-Tasks'
 
+
   # Create GCS bucket for Terraform state
   - name: 'gcr.io/cloud-builders/gcloud'
     entrypoint: 'bash'
