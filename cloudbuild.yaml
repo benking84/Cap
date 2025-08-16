@@ -57,6 +57,14 @@ steps:
     args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/cap-tasks:$COMMIT_SHA']
     id: 'Push-Tasks'
 
+
+  # Create GCS bucket for Terraform state
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud storage buckets create gs://${_TERRAFORM_STATE_BUCKET} --project=${PROJECT_ID} --location=${_REGION} || true
   # Run Terraform
   - name: 'hashicorp/terraform:1.12.2'
     entrypoint: 'sh'
@@ -90,6 +98,7 @@ substitutions:
   _REPOSITORY: 'cloud-run-repo'
   _IMAGE_NAME: 'cap-web'
   _WEB_URL: 'https://your-app-url.com' # TODO: Replace with your actual URL
+  _TERRAFORM_STATE_BUCKET: 'aviato-cap-terrafor-state'
 
 images:
 - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE_NAME}:$COMMIT_SHA'
