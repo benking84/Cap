@@ -1,4 +1,7 @@
 resource "google_sql_database_instance" "main" {
+  depends_on = [
+    var.private_service_access_id
+  ]
   project             = var.project_id
   name                = "private-db-instance"
   database_version    = "POSTGRES_13"

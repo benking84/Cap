@@ -41,6 +41,7 @@ module "cloud_sql" {
   region     = var.region
   network_id = module.vpc.network_id
   db_user = "db_user"
+  private_service_access_id = module.vpc.private_service_access_id
 }
 
 module "cloud_run" {
