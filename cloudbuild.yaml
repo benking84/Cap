@@ -5,7 +5,7 @@ steps:
     args:
       - '-c'
       - |
-        gcloud services enable cloudresourcemanager.googleapis.com
+        gcloud services enable cloudresourcemanager.googleapis.com secretmanager.googleapis.com servicenetworking.googleapis.com
   # Create the Artifact Registry repository
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
@@ -78,6 +78,13 @@ steps:
       - '-c'
       - |
         gcloud storage buckets add-iam-policy-binding gs://${_TERRAFORM_STATE_BUCKET} --member=serviceAccount:1062316443287-compute@developer.gserviceaccount.com --role=roles/storage.objectAdmin || true
+  # Grant Compute Network Admin role to the Cloud Build service account
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud projects add-iam-policy-binding ${PROJECT_ID} --member=serviceAccount:1062316443287-compute@developer.gserviceaccount.com --role=roles/compute.networkAdmin || true
   # Run Terraform
   - name: 'hashicorp/terraform:1.12.2'
     entrypoint: 'sh'
