@@ -1,6 +1,6 @@
 terraform {
   backend "gcs" {
-    bucket  = "aviato-cap-terrafor-state"
+    bucket  = "aviato-cap-terraform-state-1"
     prefix  = "terraform/state"
   }
   required_providers {
