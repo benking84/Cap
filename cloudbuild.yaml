@@ -71,6 +71,7 @@ steps:
       - '-c'
       - |
         gcloud storage buckets create gs://${_TERRAFORM_STATE_BUCKET} --project=${PROJECT_ID} --location=${_REGION} || true
+<<<<<<< HEAD
   # Grant IAM permissions to the Cloud Build service account
   - name: 'gcr.io/cloud-builders/gcloud'
     entrypoint: 'bash'
@@ -106,6 +107,8 @@ steps:
       - '-c'
       - |
         gcloud projects add-iam-policy-binding ${PROJECT_ID} --member=serviceAccount:1062316443287-compute@developer.gserviceaccount.com --role=roles/editor || true
+=======
+>>>>>>> 4ad736fa (fix(cloudbuild): resolve all outstanding cloudbuild and terraform issues)
   # Run Terraform
   - name: 'hashicorp/terraform:1.12.2'
     entrypoint: 'sh'
