@@ -71,6 +71,13 @@ steps:
       - '-c'
       - |
         gcloud storage buckets create gs://${_TERRAFORM_STATE_BUCKET} --project=${PROJECT_ID} --location=${_REGION} || true
+  # Grant IAM permissions to the Cloud Build service account
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud storage buckets add-iam-policy-binding gs://${_TERRAFORM_STATE_BUCKET} --member=serviceAccount:1062316443287-compute@developer.gserviceaccount.com --role=roles/storage.objectAdmin || true
   # Run Terraform
   - name: 'hashicorp/terraform:1.12.2'
     entrypoint: 'sh'
