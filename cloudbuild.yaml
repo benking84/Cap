@@ -1,4 +1,11 @@
 steps:
+  # Enable the Cloud Resource Manager API
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud services enable cloudresourcemanager.googleapis.com
   # Create the Artifact Registry repository
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
