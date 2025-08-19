@@ -1,4 +1,7 @@
 resource "google_sql_database_instance" "main" {
+  depends_on = [
+    var.private_service_access_id
+  ]
   project             = var.project_id
   name                = "private-db-instance"
   database_version    = "POSTGRES_13"
@@ -27,11 +30,10 @@ resource "random_password" "db_password" {
 }
 
 resource "google_secret_manager_secret" "db_password_secret" {
-  project_id = var.project_id
   secret_id  = "db-password"
 
   replication {
-    automatic = true
+    auto {}
   }
 }
 
@@ -41,11 +43,10 @@ resource "google_secret_manager_secret_version" "db_password_secret_version" {
 }
 
 resource "google_secret_manager_secret" "db_user_secret" {
-  project_id = var.project_id
   secret_id  = "db-user"
 
   replication {
-    automatic = true
+    auto {}
   }
 }
 

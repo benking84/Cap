@@ -1,4 +1,8 @@
 terraform {
+  backend "gcs" {
+    bucket  = "aviato-cap-terraform-state-1"
+    prefix  = "terraform/state"
+  }
   required_providers {
     google = {
       source  = "hashicorp/google"
@@ -22,7 +26,6 @@ resource "google_project_service" "project_services" {
     "vpcaccess.googleapis.com"
   ])
   service                    = each.key
-  disable_dependency_handling = false
 }
 
 module "vpc" {
@@ -38,6 +41,7 @@ module "cloud_sql" {
   region     = var.region
   network_id = module.vpc.network_id
   db_user = "db_user"
+  private_service_access_id = module.vpc.private_service_access_id
 }
 
 module "cloud_run" {

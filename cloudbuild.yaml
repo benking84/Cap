@@ -1,4 +1,11 @@
 steps:
+  # Enable the Cloud Resource Manager API
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud services enable cloudresourcemanager.googleapis.com secretmanager.googleapis.com servicenetworking.googleapis.com sqladmin.googleapis.com
   # Create the Artifact Registry repository
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
@@ -21,6 +28,8 @@ steps:
 
   # Build the Docker image for web app
   - name: 'gcr.io/cloud-builders/docker'
+    env:
+      - 'DOCKER_BUILDKIT=1'
     args: [
       'build',
       '-t',
@@ -29,7 +38,6 @@ steps:
       '-f',
       'apps/web/Dockerfile'
     ]
-
     id: 'Build-Web'
 
   # Push the Docker image for web app to Artifact Registry
@@ -39,9 +47,8 @@ steps:
 
   # Build the Docker image for tasks app
   - name: 'gcr.io/cloud-builders/docker'
-
-    entrypoint: 'bash'
-
+    env:
+      - 'DOCKER_BUILDKIT=1'
     args: [
       'build',
       '-t',
@@ -57,9 +64,51 @@ steps:
     args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/cap-tasks:$COMMIT_SHA']
     id: 'Push-Tasks'
 
-  # Run Terraform
-  - name: 'hashicorp/terraform:1.0.0'
+  # Create GCS bucket for Terraform state
+  - name: 'gcr.io/cloud-builders/gcloud'
     entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud storage buckets create gs://${_TERRAFORM_STATE_BUCKET} --project=${PROJECT_ID} --location=${_REGION} || true
+  # Grant IAM permissions to the Cloud Build service account
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud storage buckets add-iam-policy-binding gs://${_TERRAFORM_STATE_BUCKET} --member=serviceAccount:1062316443287-compute@developer.gserviceaccount.com --role=roles/storage.objectAdmin || true
+  # Grant Compute Network Admin role to the Cloud Build service account
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud projects add-iam-policy-binding ${PROJECT_ID} --member=serviceAccount:1062316443287-compute@developer.gserviceaccount.com --role=roles/compute.networkAdmin || true
+  # Grant Secret Manager Secret Accessor role to the Cloud Build service account
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud projects add-iam-policy-binding ${PROJECT_ID} --member=serviceAccount:1062316443287-compute@developer.gserviceaccount.com --role=roles/secretmanager.secretAccessor || true
+  # Grant Cloud SQL Client role to the Cloud Build service account
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud projects add-iam-policy-binding ${PROJECT_ID} --member=serviceAccount:1062316443287-compute@developer.gserviceaccount.com --role=roles/cloudsql.client || true
+  # Grant Editor role to the Cloud Build service account
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud projects add-iam-policy-binding ${PROJECT_ID} --member=serviceAccount:1062316443287-compute@developer.gserviceaccount.com --role=roles/editor || true
+  # Run Terraform
+  - name: 'hashicorp/terraform:1.12.2'
+    entrypoint: 'sh'
     args:
       - '-c'
       - |
@@ -90,6 +139,7 @@ substitutions:
   _REPOSITORY: 'cloud-run-repo'
   _IMAGE_NAME: 'cap-web'
   _WEB_URL: 'https://your-app-url.com' # TODO: Replace with your actual URL
+  _TERRAFORM_STATE_BUCKET: 'aviato-cap-terraform-state-1'
 
 images:
 - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE_NAME}:$COMMIT_SHA'
@@ -97,3 +147,4 @@ images:
 
 options:
   logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
