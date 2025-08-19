@@ -21,9 +21,19 @@ resource "google_secret_manager_secret" "db_user_secret" {
 }
 
 resource "google_sql_database_instance" "main" {
+<<<<<<< HEAD
   name             = "cap-sql-instance"
   database_version = "MYSQL_8_0"
   region           = var.region
+=======
+  depends_on = [
+    var.private_service_access_id
+  ]
+  project             = var.project_id
+  name                = "private-db-instance"
+  database_version    = "POSTGRES_13"
+  region              = var.region
+>>>>>>> c0ca73b7 (fix(cloudbuild): enable apis and grant roles for new project)
 
   settings {
     tier = "db-f1-micro"
