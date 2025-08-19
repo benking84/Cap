@@ -66,6 +66,7 @@ steps:
 
   # Create GCS bucket for Terraform state
   - name: 'gcr.io/cloud-builders/gcloud'
+
     entrypoint: 'bash'
     args:
       - '-c'
@@ -84,15 +85,13 @@ steps:
     args:
       - '-c'
       - |
-        gcloud projects add-iam-policy-binding ${PROJECT_ID} --member=serviceAccount:1062316443287-compute@developer.gserviceaccount.com --role=roles/compute.networkAdmin || true
-  # Grant Secret Manager Secret Accessor role to the Cloud Build service account
   - name: 'gcr.io/cloud-builders/gcloud'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        gcloud projects add-iam-policy-binding ${PROJECT_ID} --member=serviceAccount:1062316443287-compute@developer.gserviceaccount.com --role=roles/secretmanager.secretAccessor || true
-  # Grant Cloud SQL Client role to the Cloud Build service account
+        gcloud storage buckets add-iam-policy-binding gs://${_TERRAFORM_STATE_BUCKET} --member=serviceAccount:1062316443287-compute@developer.gserviceaccount.com --role=roles/storage.objectAdmin || true
+  # Grant Compute Network Admin role to the Cloud Build service account
   - name: 'gcr.io/cloud-builders/gcloud'
     entrypoint: 'bash'
     args:
@@ -105,7 +104,8 @@ steps:
     args:
       - '-c'
       - |
-        gcloud projects add-iam-policy-binding ${PROJECT_ID} --member=serviceAccount:1062316443287-compute@developer.gserviceaccount.com --role=roles/editor || true
+        gcloud projects add-iam-policy-binding ${PROJECT_ID} --member=serviceAccount:1062316443287-compute@developer.gserviceaccount.com --role=roles/compute.networkAdmin || true
+
   # Run Terraform
   - name: 'hashicorp/terraform:1.12.2'
     entrypoint: 'sh'
