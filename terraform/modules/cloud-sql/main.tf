@@ -5,9 +5,11 @@ resource "google_secret_manager_secret" "db_password_secret" {
       replicas {
         location = "australia-southeast1"
       }
+
     }
   }
 }
+
 
 resource "google_secret_manager_secret" "db_user_secret" {
   secret_id  = "db-user"
@@ -17,6 +19,7 @@ resource "google_secret_manager_secret" "db_user_secret" {
         location = "australia-southeast1"
       }
     }
+
   }
 }
 
@@ -24,7 +27,6 @@ resource "google_sql_database_instance" "main" {
   name             = "cap-sql-instance"
   database_version = "MYSQL_8_0"
   region           = var.region
-
   settings {
     tier = "db-f1-micro"
 
@@ -32,6 +34,7 @@ resource "google_sql_database_instance" "main" {
       ipv4_enabled    = false
       private_network = var.network_id
     }
+
   }
 
   deletion_protection = false

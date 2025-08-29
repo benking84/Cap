@@ -1,4 +1,8 @@
 terraform {
+  backend "gcs" {
+    bucket  = "aviato-cap-terraform-state-1"
+    prefix  = "terraform/state"
+  }
   required_providers {
     google = {
       source  = "hashicorp/google"
@@ -37,16 +41,27 @@ module "cloud_sql" {
   region     = var.region
   network_id = module.vpc.network_id
   db_user = "db_user"
+  private_service_access_id = module.vpc.private_service_access_id
 }
 
 module "cloud_run" {
-  source           = "./modules/cloud-run"
-  project_id       = var.project_id
-  region           = var.region
-  service_name     = "cloud-run-service"
-  db_connection_name = module.cloud_sql.db_instance_connection_name
-  db_name          = module.cloud_sql.db_name
-  db_user_secret_id = module.cloud_sql.db_user_secret_id
-  db_password_secret_id = module.cloud_sql.db_password_secret_id
-  vpc_connector_id = module.vpc.vpc_connector_id
+  for_each = var.services
+
+  source                          = "./modules/cloud-run"
+  project_id                      = var.project_id
+  region                          = var.region
+  service_name                    = each.key
+  image_url                       = each.value.image_url
+  db_connection_name              = module.cloud_sql.db_instance_connection_name
+  db_name                         = module.cloud_sql.db_name
+  db_user_secret_id               = module.cloud_sql.db_user_secret_id
+  db_password_secret_id           = module.cloud_sql.db_password_secret_id
+  vpc_connector_id                = module.vpc.vpc_connector_id
+  google_client_id_secret_id      = each.value.google_client_id_secret_id
+  google_client_secret_secret_id  = each.value.google_client_secret_secret_id
+  workos_client_id_secret_id      = each.value.workos_client_id_secret_id
+  workos_api_key_secret_id        = each.value.workos_api_key_secret_id
+  resend_api_key_secret_id        = each.value.resend_api_key_secret_id
+  nextauth_secret_secret_id       = each.value.nextauth_secret_secret_id
+  web_url                         = each.value.web_url
 }

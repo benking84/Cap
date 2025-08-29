@@ -17,3 +17,8 @@ variable "db_user" {
   description = "The username for the database."
   type        = string
 }
+
+variable "private_service_access_id" {
+  description = "The ID of the private service access connection."
+  type        = string
+}
