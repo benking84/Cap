@@ -1,0 +1,11 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - '-f'
+      - packages/database/Dockerfile
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/cap-db-migrator:$SHORT_SHA'
+      - '.'
+images:
+  - 'gcr.io/$PROJECT_ID/cap-db-migrator:$SHORT_SHA'

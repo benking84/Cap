@@ -47,3 +47,10 @@ tauri.windows.conf.json
 # Cursor
 .cursor
 .env*.local
+# --- Terraform ---
+/terraform/.terraform/
+/terraform/terraform.tfstate
+/terraform/terraform.tfstate.*
+/terraform/.terraform.lock.hcl
+/terraform/modules.json
+# End Terraform
