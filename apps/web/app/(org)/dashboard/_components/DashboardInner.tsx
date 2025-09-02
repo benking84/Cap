@@ -15,7 +15,8 @@ import { faMoon, faSun } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import clsx from "clsx";
 import { MoreVertical } from "lucide-react";
-import { signOut } from "next-auth/react";
+import { signOut as firebaseSignOut } from "firebase/auth";
+import { auth } from "@/lib/firebase/config";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -189,7 +190,15 @@ const User = () => {
       {
         name: "Sign Out",
         icon: <LogoutIcon />,
-        onClick: () => signOut(),
+        onClick: async () => {
+          try {
+            await firebaseSignOut(auth);
+            await fetch('/api/auth/logout', { method: 'POST' });
+            window.location.href = '/login';
+          } catch (error) {
+            console.error('Sign out error:', error);
+          }
+        },
         iconClassName: "text-gray-11 group-hover:text-gray-12",
         showCondition: true,
       },
