@@ -89,15 +89,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // If no auth token and trying to access protected route, redirect to login
-  if (!authToken && path.startsWith('/dashboard')) {
-    console.log('No auth token, redirecting to login');
-    const loginUrl = new URL('/login', request.url);
-    // Only add callbackUrl if it's not already set to prevent loops
-    if (!loginUrl.searchParams.has('callbackUrl')) {
-      loginUrl.searchParams.set('callbackUrl', path);
-    }
-    return NextResponse.redirect(loginUrl);
+  // Skip auth checks for dashboard routes - let the layout handle authentication
+  if (path.startsWith('/dashboard')) {
+    console.log('Dashboard route - letting layout handle auth');
+    return NextResponse.next();
   }
 
   // If we have an auth token, verify it

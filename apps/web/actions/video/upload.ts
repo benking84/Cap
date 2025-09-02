@@ -1,19 +1,21 @@
 "use server";
 
+import { getFirebaseUser } from "@cap/database/auth/firebase-session";
+import { createBucketProvider } from "@/utils/s3";
+import { db } from "@cap/database";
+import { s3Buckets, videos } from "@cap/database/schema";
+import { eq } from "drizzle-orm";
+import { serverEnv } from "@cap/env";
+import { nanoId } from "@cap/database/helpers";
 import {
 	CloudFrontClient,
 	CreateInvalidationCommand,
 } from "@aws-sdk/client-cloudfront";
-import { db } from "@cap/database";
 import { getCurrentUser } from "@cap/database/auth/session";
-import { nanoId } from "@cap/database/helpers";
-import { s3Buckets, videos } from "@cap/database/schema";
-import { buildEnv, NODE_ENV, serverEnv } from "@cap/env";
+import { buildEnv, NODE_ENV } from "@cap/env";
 import { userIsPro } from "@cap/utils";
-import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { dub } from "@/utils/dub";
-import { createBucketProvider } from "@/utils/s3";
 
 async function getVideoUploadPresignedUrl({
 	fileKey,
@@ -28,7 +30,7 @@ async function getVideoUploadPresignedUrl({
 	videoCodec?: string;
 	audioCodec?: string;
 }) {
-	const user = await getCurrentUser();
+  const user = await getFirebaseUser();
 
 	if (!user) {
 		throw new Error("Unauthorized");
@@ -165,7 +167,7 @@ export async function createVideoAndGetUploadUrl({
 	isUpload?: boolean;
 	folderId?: string;
 }) {
-	const user = await getCurrentUser();
+  const user = await getFirebaseUser();
 
 	if (!user) {
 		throw new Error("Unauthorized");

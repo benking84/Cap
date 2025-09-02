@@ -43,90 +43,80 @@ const encryptedTextNullable = customType<{ data: string; notNull: false }>({
 });
 
 export const users = mysqlTable(
-	"users",
-	{
-		id: nanoId("id").notNull().primaryKey().unique(),
-		name: varchar("name", { length: 255 }),
-		lastName: varchar("lastName", { length: 255 }),
-		email: varchar("email", { length: 255 }).unique().notNull(),
-		emailVerified: timestamp("emailVerified"),
-		image: varchar("image", { length: 255 }),
-		stripeCustomerId: varchar("stripeCustomerId", { length: 255 }),
-		stripeSubscriptionId: varchar("stripeSubscriptionId", {
-			length: 255,
-		}),
-		thirdPartyStripeSubscriptionId: varchar("thirdPartyStripeSubscriptionId", {
-			length: 255,
-		}),
-		stripeSubscriptionStatus: varchar("stripeSubscriptionStatus", {
-			length: 255,
-		}),
-		stripeSubscriptionPriceId: varchar("stripeSubscriptionPriceId", {
-			length: 255,
-		}),
-		preferences: json("preferences")
-			.$type<{
-				notifications: {
-					pauseComments: boolean;
-					pauseReplies: boolean;
-					pauseViews: boolean;
-					pauseReactions: boolean;
-				};
-			} | null>()
-			.default(null),
-		activeOrganizationId: nanoId("activeOrganizationId"),
-		created_at: timestamp("created_at").notNull().defaultNow(),
-		updated_at: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
-		onboarding_completed_at: timestamp("onboarding_completed_at"),
-		customBucket: nanoIdNullable("customBucket"),
-		inviteQuota: int("inviteQuota").notNull().default(1),
-	},
-	(table) => ({
-		emailIndex: uniqueIndex("email_idx").on(table.email),
-	}),
+  "users",
+  {
+    id: varchar("id", { length: 50 }).notNull().primaryKey().unique(),
+    name: varchar("name", { length: 255 }),
+    lastName: varchar("lastName", { length: 255 }),
+    email: varchar("email", { length: 255 }).unique().notNull(),
+    emailVerified: timestamp("emailVerified"),
+    image: varchar("image", { length: 255 }),
+    stripeCustomerId: varchar("stripeCustomerId", { length: 255 }),
+    stripeSubscriptionId: varchar("stripeSubscriptionId", {
+      length: 255,
+    }),
+    thirdPartyStripeSubscriptionId: varchar("thirdPartyStripeSubscriptionId", {
+      length: 255,
+    }),
+    stripeSubscriptionStatus: varchar("stripeSubscriptionStatus", {
+      length: 255,
+    }),
+    stripeSubscriptionPriceId: varchar("stripeSubscriptionPriceId", {
+      length: 255,
+    }),
+    activeOrganizationId: nanoId("activeOrganizationId"),
+    created_at: timestamp("created_at").notNull().defaultNow(),
+    updated_at: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    onboarding_completed_at: timestamp("onboarding_completed_at"),
+    customBucket: nanoIdNullable("customBucket"),
+    inviteQuota: int("inviteQuota").notNull().default(1),
+  },
+  (table) => ({
+    emailIndex: uniqueIndex("email_idx").on(table.email),
+  })
 );
 
 export const accounts = mysqlTable(
-	"accounts",
-	{
-		id: nanoId("id").notNull().primaryKey().unique(),
-		userId: nanoId("userId").notNull(),
-		type: varchar("type", { length: 255 }).notNull(),
-		provider: varchar("provider", { length: 255 }).notNull(),
-		providerAccountId: varchar("providerAccountId", { length: 255 }).notNull(),
-		access_token: text("access_token"),
-		expires_in: int("expires_in"),
-		id_token: text("id_token"),
-		refresh_token: text("refresh_token"),
-		refresh_token_expires_in: int("refresh_token_expires_in"),
-		scope: varchar("scope", { length: 255 }),
-		token_type: varchar("token_type", { length: 255 }),
-		createdAt: timestamp("createdAt").defaultNow().notNull(),
-		updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-		tempColumn: text("tempColumn"),
-	},
-	(table) => ({
-		userIdIndex: index("user_id_idx").on(table.userId),
-		providerAccountIdIndex: index("provider_account_id_idx").on(
-			table.providerAccountId,
-		),
-	}),
+  "accounts",
+  {
+    id: nanoId("id").notNull().primaryKey().unique(),
+    userId: varchar("userId", { length: 50 }).notNull(),
+    type: varchar("type", { length: 255 }).notNull(),
+    provider: varchar("provider", { length: 255 }).notNull(),
+    providerAccountId: varchar("providerAccountId", { length: 255 }).notNull(),
+    access_token: text("access_token"),
+    expires_in: int("expires_in"),
+    id_token: text("id_token"),
+    refresh_token: text("refresh_token"),
+    refresh_token_expires_in: int("refresh_token_expires_in"),
+    scope: varchar("scope", { length: 255 }),
+    token_type: varchar("token_type", { length: 255 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    tempColumn: text("tempColumn"),
+  },
+  (table) => ({
+    userIdIndex: index("user_id_idx").on(table.userId),
+    providerAccountIdIndex: index("provider_account_id_idx").on(
+      table.providerAccountId
+    ),
+  })
 );
 
 export const sessions = mysqlTable(
-	"sessions",
-	{
-		id: nanoId("id").notNull().primaryKey().unique(),
-		sessionToken: varchar("sessionToken", { length: 255 }).unique().notNull(),
-		userId: nanoId("userId").notNull(),
-		expires: datetime("expires").notNull(),
-		created_at: timestamp("created_at").notNull().defaultNow(),
-		updated_at: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
-	},
-	(table) => ({
-		sessionTokenIndex: uniqueIndex("session_token_idx").on(table.sessionToken),
-		userIdIndex: index("user_id_idx").on(table.userId),
-	}),
+  "sessions",
+  {
+    id: nanoId("id").notNull().primaryKey().unique(),
+    sessionToken: varchar("sessionToken", { length: 255 }).unique().notNull(),
+    userId: varchar("userId", { length: 50 }).notNull(),
+    expires: datetime("expires").notNull(),
+    created_at: timestamp("created_at").notNull().defaultNow(),
+    updated_at: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => ({
+    sessionTokenIndex: uniqueIndex("session_token_idx").on(table.sessionToken),
+    userIdIndex: index("user_id_idx").on(table.userId),
+  })
 );
 
 export const verificationTokens = mysqlTable("verification_tokens", {
@@ -138,45 +128,45 @@ export const verificationTokens = mysqlTable("verification_tokens", {
 });
 
 export const organizations = mysqlTable(
-	"organizations",
-	{
-		id: nanoId("id").notNull().primaryKey().unique(),
-		name: varchar("name", { length: 255 }).notNull(),
-		ownerId: nanoId("ownerId").notNull(),
-		metadata: json("metadata"),
-		allowedEmailDomain: varchar("allowedEmailDomain", { length: 255 }),
-		customDomain: varchar("customDomain", { length: 255 }),
-		domainVerified: timestamp("domainVerified"),
-		iconUrl: varchar("iconUrl", { length: 1024 }),
-		createdAt: timestamp("createdAt").notNull().defaultNow(),
-		updatedAt: timestamp("updatedAt").notNull().defaultNow().onUpdateNow(),
-		workosOrganizationId: varchar("workosOrganizationId", { length: 255 }),
-		workosConnectionId: varchar("workosConnectionId", { length: 255 }),
-	},
-	(table) => ({
-		ownerIdIndex: index("owner_id_idx").on(table.ownerId),
-		customDomainIndex: index("custom_domain_idx").on(table.customDomain),
-	}),
+  "organizations",
+  {
+    id: nanoId("id").notNull().primaryKey().unique(),
+    name: varchar("name", { length: 255 }).notNull(),
+    ownerId: varchar("ownerId", { length: 50 }).notNull(),
+    metadata: json("metadata"),
+    allowedEmailDomain: varchar("allowedEmailDomain", { length: 255 }),
+    customDomain: varchar("customDomain", { length: 255 }),
+    domainVerified: timestamp("domainVerified"),
+    iconUrl: varchar("iconUrl", { length: 1024 }),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow().onUpdateNow(),
+    workosOrganizationId: varchar("workosOrganizationId", { length: 255 }),
+    workosConnectionId: varchar("workosConnectionId", { length: 255 }),
+  },
+  (table) => ({
+    ownerIdIndex: index("owner_id_idx").on(table.ownerId),
+    customDomainIndex: index("custom_domain_idx").on(table.customDomain),
+  })
 );
 
 export const organizationMembers = mysqlTable(
-	"organization_members",
-	{
-		id: nanoId("id").notNull().primaryKey().unique(),
-		userId: nanoId("userId").notNull(),
-		organizationId: nanoId("organizationId").notNull(),
-		role: varchar("role", { length: 255 }).notNull(),
-		createdAt: timestamp("createdAt").notNull().defaultNow(),
-		updatedAt: timestamp("updatedAt").notNull().defaultNow().onUpdateNow(),
-	},
-	(table) => ({
-		userIdIndex: index("user_id_idx").on(table.userId),
-		organizationIdIndex: index("organization_id_idx").on(table.organizationId),
-		userIdOrganizationIdIndex: index("user_id_organization_id_idx").on(
-			table.userId,
-			table.organizationId,
-		),
-	}),
+  "organization_members",
+  {
+    id: nanoId("id").notNull().primaryKey().unique(),
+    userId: varchar("userId", { length: 50 }).notNull(),
+    organizationId: nanoId("organizationId").notNull(),
+    role: varchar("role", { length: 255 }).notNull(),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => ({
+    userIdIndex: index("user_id_idx").on(table.userId),
+    organizationIdIndex: index("organization_id_idx").on(table.organizationId),
+    userIdOrganizationIdIndex: index("user_id_organization_id_idx").on(
+      table.userId,
+      table.organizationId
+    ),
+  })
 );
 
 export const organizationInvites = mysqlTable(
@@ -229,51 +219,42 @@ export const folders = mysqlTable(
 );
 
 export const videos = mysqlTable(
-	"videos",
-	{
-		id: nanoId("id").notNull().primaryKey().unique().$type<Video.VideoId>(),
-		ownerId: nanoId("ownerId").notNull(),
-		name: varchar("name", { length: 255 }).notNull().default("My Video"),
-		bucket: nanoIdNullable("bucket"),
-		// in seconds
-		duration: float("duration"),
-		width: int("width"),
-		height: int("height"),
-		fps: int("fps"),
-		metadata: json("metadata").$type<VideoMetadata>(),
-		public: boolean("public").notNull().default(true),
-		transcriptionStatus: varchar("transcriptionStatus", { length: 255 }).$type<
-			"PROCESSING" | "COMPLETE" | "ERROR"
-		>(),
-		source: json("source")
-			.$type<
-				{ type: "MediaConvert" } | { type: "local" } | { type: "desktopMP4" }
-			>()
-			.notNull()
-			.default({ type: "MediaConvert" }),
-		folderId: nanoIdNullable("folderId"),
-		createdAt: timestamp("createdAt").notNull().defaultNow(),
-		updatedAt: timestamp("updatedAt").notNull().defaultNow().onUpdateNow(),
-		// PRIVATE
-		password: encryptedTextNullable("password"),
-		// LEGACY
-		xStreamInfo: text("xStreamInfo"),
-		isScreenshot: boolean("isScreenshot").notNull().default(false),
-		// DEPRECATED
-		awsRegion: varchar("awsRegion", { length: 255 }),
-		awsBucket: varchar("awsBucket", { length: 255 }),
-		videoStartTime: varchar("videoStartTime", { length: 255 }),
-		audioStartTime: varchar("audioStartTime", { length: 255 }),
-		jobId: varchar("jobId", { length: 255 }),
-		jobStatus: varchar("jobStatus", { length: 255 }),
-		skipProcessing: boolean("skipProcessing").notNull().default(false),
-	},
-	(table) => ({
-		idIndex: index("id_idx").on(table.id),
-		ownerIdIndex: index("owner_id_idx").on(table.ownerId),
-		publicIndex: index("is_public_idx").on(table.public),
-		folderIdIndex: index("folder_id_idx").on(table.folderId),
-	}),
+  "videos",
+  {
+    id: nanoId("id").notNull().primaryKey().unique(),
+    ownerId: varchar("ownerId", { length: 50 }).notNull(),
+    name: varchar("name", { length: 255 }).notNull().default("My Video"),
+    // DEPRECATED
+    awsRegion: varchar("awsRegion", { length: 255 }),
+    awsBucket: varchar("awsBucket", { length: 255 }),
+    bucket: nanoIdNullable("bucket"),
+    metadata: json("metadata").$type<VideoMetadata>(),
+    public: boolean("public").notNull().default(true),
+    password: encryptedTextNullable("password"),
+    videoStartTime: varchar("videoStartTime", { length: 255 }),
+    audioStartTime: varchar("audioStartTime", { length: 255 }),
+    xStreamInfo: text("xStreamInfo"),
+    jobId: varchar("jobId", { length: 255 }),
+    jobStatus: varchar("jobStatus", { length: 255 }),
+    isScreenshot: boolean("isScreenshot").notNull().default(false),
+    skipProcessing: boolean("skipProcessing").notNull().default(false),
+    transcriptionStatus: varchar("transcriptionStatus", { length: 255 }),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow().onUpdateNow(),
+    source: json("source")
+      .$type<
+        { type: "MediaConvert" } | { type: "local" } | { type: "desktopMP4" }
+      >()
+      .notNull()
+      .default({ type: "MediaConvert" }),
+    folderId: nanoIdNullable("folderId"),
+  },
+  (table) => ({
+    idIndex: index("id_idx").on(table.id),
+    ownerIdIndex: index("owner_id_idx").on(table.ownerId),
+    publicIndex: index("is_public_idx").on(table.public),
+    folderIdIndex: index("folder_id_idx").on(table.folderId),
+  })
 );
 
 export const sharedVideos = mysqlTable(
@@ -536,23 +517,23 @@ export const spaces = mysqlTable(
 );
 
 export const spaceMembers = mysqlTable(
-	"space_members",
-	{
-		id: nanoId("id").notNull().primaryKey().unique(),
-		spaceId: nanoId("spaceId").notNull(),
-		userId: nanoId("userId").notNull(),
-		role: varchar("role", { length: 255 }).notNull().default("member"),
-		createdAt: timestamp("createdAt").notNull().defaultNow(),
-		updatedAt: timestamp("updatedAt").notNull().defaultNow().onUpdateNow(),
-	},
-	(table) => ({
-		spaceIdIndex: index("space_id_idx").on(table.spaceId),
-		userIdIndex: index("user_id_idx").on(table.userId),
-		spaceIdUserIdIndex: index("space_id_user_id_idx").on(
-			table.spaceId,
-			table.userId,
-		),
-	}),
+  "space_members",
+  {
+    id: nanoId("id").notNull().primaryKey().unique(),
+    spaceId: nanoId("spaceId").notNull(),
+    userId: varchar("userId", { length: 50 }).notNull(),
+    role: varchar("role", { length: 255 }).notNull().default("member"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => ({
+    spaceIdIndex: index("space_id_idx").on(table.spaceId),
+    userIdIndex: index("user_id_idx").on(table.userId),
+    spaceIdUserIdIndex: index("space_id_user_id_idx").on(
+      table.spaceId,
+      table.userId
+    ),
+  })
 );
 
 export const spaceVideos = mysqlTable(

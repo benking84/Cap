@@ -1,5 +1,5 @@
 import { db } from "@cap/database";
-import { getCurrentUser } from "@cap/database/auth/session";
+import { getFirebaseUser } from "@cap/database/auth/firebase-session";
 import {
 	comments,
 	folders,
@@ -100,7 +100,7 @@ export default async function CapsPage({
 }: {
 	searchParams: { [key: string]: string | string[] | undefined };
 }) {
-	const user = await getCurrentUser();
+  const user = await getFirebaseUser();
 
 	if (!user || !user.id) {
 		redirect("/login");

@@ -1,36 +1,61 @@
+import { type NextRequest } from "next/server";
+import { getFirebaseUser } from "@cap/database/auth/firebase-session";
+import { organizationMembers, organizations, users } from "@cap/database/schema";
 import { db } from "@cap/database";
 import { getCurrentUser } from "@cap/database/auth/session";
 import { nanoId } from "@cap/database/helpers";
-import {
-	organizationMembers,
-	organizations,
-	users,
-} from "@cap/database/schema";
 import { and, eq, ne, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import type { NextRequest } from "next/server";
 
 export async function POST(request: NextRequest) {
-	const user = await getCurrentUser();
-	const { firstName, lastName } = await request.json();
+  try {
+    const user = await getFirebaseUser();
+    const { firstName, lastName } = await request.json();
 
-	if (!user) {
-		console.error("User not found");
-		return Response.json({ error: true }, { status: 401 });
-	}
+    console.log('Onboarding API - Firebase user:', user?.id, user?.email);
+    console.log('Onboarding API - Form data:', { firstName, lastName });
 
-	await db()
-		.update(users)
-		.set({
-			name: firstName,
-			lastName: lastName,
-		})
-		.where(eq(users.id, user.id));
+    if (!user) {
+      console.error("User not found");
+      return Response.json({ error: "User not authenticated" }, { status: 401 });
+    }
 
-	let fullName = firstName;
-	if (lastName) {
-		fullName += ` ${lastName}`;
-	}
+    // Check if user exists in database, if not create them
+    console.log('Checking if user exists in database...');
+    const [existingUser] = await db()
+      .select()
+      .from(users)
+      .where(eq(users.id, user.id))
+      .limit(1);
+
+    if (!existingUser) {
+      console.log('User not found in database, creating new user...');
+      // Create user in database - only provide non-null values
+      const insertData: any = {
+        id: user.id,
+        email: user.email,
+        name: firstName,
+        lastName: lastName,
+      };
+      
+      if (user.image) insertData.image = user.image;
+      if (user.emailVerified) insertData.emailVerified = user.emailVerified;
+      
+      console.log('Inserting user data:', insertData);
+      await db().insert(users).values(insertData);
+      console.log('User created successfully');
+    } else {
+      console.log('User exists, updating name and lastName...');
+      // Update existing user
+      await db()
+        .update(users)
+        .set({
+          name: firstName,
+          lastName: lastName,
+        })
+        .where(eq(users.id, user.id));
+      console.log('User updated successfully');
+    }
 
 	const memberButNotOwner = await db()
 		.select()
@@ -75,7 +100,7 @@ export async function POST(request: NextRequest) {
 			.values({
 				id: organizationId,
 				ownerId: user.id,
-				name: `${fullName}'s Organization`,
+				name: `${firstName} ${lastName}'s Organization`,
 			});
 
 		await db().insert(organizationMembers).values({
@@ -93,12 +118,22 @@ export async function POST(request: NextRequest) {
 
 	revalidatePath("/onboarding");
 
-	return Response.json(
-		{
-			success: true,
-			message: "Onboarding completed successfully",
-			isMemberOfOrganization,
-		},
-		{ status: 200 },
-	);
+    return Response.json(
+      { 
+        success: true, 
+        message: "Onboarding completed successfully",
+        isMemberOfOrganization 
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error('Onboarding API error:', error);
+    return Response.json(
+      { 
+        error: "Internal server error", 
+        message: error instanceof Error ? error.message : "Unknown error" 
+      },
+      { status: 500 }
+    );
+  }
 }

@@ -12,7 +12,9 @@ function createDrizzle() {
 	return drizzle(connection);
 }
 
-let _cached: ReturnType<typeof createDrizzle> | undefined;
+console.log('DATABASE_URL:', serverEnv().DATABASE_URL);
+
+let _cached: ReturnType<typeof createDrizzle> | undefined = undefined;
 
 export const db = () => {
 	if (!_cached) {
