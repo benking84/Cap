@@ -143,7 +143,8 @@ export function LoginForm() {
       // Get the ID token
       const idToken = await result.user.getIdToken();
       
-      // First, create the session cookie
+      // Create the session cookie
+      console.log('Creating session with ID token...');
       const sessionResponse = await fetch('/api/auth/session', {
         method: 'POST',
         headers: {
@@ -153,24 +154,17 @@ export function LoginForm() {
         credentials: 'include',
       });
       
+      console.log('Session response status:', sessionResponse.status);
+      
       if (!sessionResponse.ok) {
         const error = await sessionResponse.json();
+        console.error('Session creation failed:', error);
         throw new Error(error.error || 'Failed to create session');
       }
       
-      // Then set the token in cookies for immediate client-side access
-      const tokenResponse = await fetch('/api/auth/session/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ idToken }),
-        credentials: 'include',
-      });
+      const sessionData = await sessionResponse.json();
+      console.log('Session created successfully:', sessionData);
       
-      if (!tokenResponse.ok) {
-        throw new Error('Failed to set auth token');
-      }
       
       // Force a hard refresh to ensure all auth state is properly set
       const callbackUrl = next || '/dashboard';
@@ -203,7 +197,8 @@ export function LoginForm() {
       // Get the ID token
       const idToken = await result.user.getIdToken();
       
-      // First, create the session cookie
+      // Create the session cookie
+      console.log('Creating session with ID token...');
       const sessionResponse = await fetch('/api/auth/session', {
         method: 'POST',
         headers: {
@@ -213,24 +208,17 @@ export function LoginForm() {
         credentials: 'include',
       });
       
+      console.log('Session response status:', sessionResponse.status);
+      
       if (!sessionResponse.ok) {
         const error = await sessionResponse.json();
+        console.error('Session creation failed:', error);
         throw new Error(error.error || 'Failed to create session');
       }
       
-      // Then set the token in cookies for immediate client-side access
-      const tokenResponse = await fetch('/api/auth/session/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ idToken }),
-        credentials: 'include',
-      });
+      const sessionData = await sessionResponse.json();
+      console.log('Session created successfully:', sessionData);
       
-      if (!tokenResponse.ok) {
-        throw new Error('Failed to set auth token');
-      }
       
       // Force a hard refresh to ensure all auth state is properly set
       const callbackUrl = next || '/dashboard';

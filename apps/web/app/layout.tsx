@@ -105,19 +105,20 @@ export default async function RootLayout({ children }: PropsWithChildren) {
       </head>
       <body suppressHydrationWarning>
         <AuthContextProvider>
-          <script
-            dangerouslySetInnerHTML={{ __html: `(${script.toString()})()` }}
-          />
-          <TooltipPrimitive.Provider>
-            {/* <PostHogProvider bootstrapData={bootstrapData}> */}
-              <PublicEnvContext
-                value={{
-                  webUrl: process.env.NEXT_PUBLIC_WEB_URL || '',
-                  awsBucket: process.env.NEXT_PUBLIC_AWS_BUCKET || '',
-                  s3BucketUrl: process.env.NEXT_PUBLIC_S3_BUCKET_URL || ''
-                }}
-              >
-                {children}
+          <ReactQueryProvider>
+            <script
+              dangerouslySetInnerHTML={{ __html: `(${script.toString()})()` }}
+            />
+            <TooltipPrimitive.Provider>
+              {/* <PostHogProvider bootstrapData={bootstrapData}> */}
+                <PublicEnvContext
+                  value={{
+                    webUrl: process.env.NEXT_PUBLIC_WEB_URL || '',
+                    awsBucket: process.env.NEXT_PUBLIC_AWS_BUCKET || '',
+                    s3BucketUrl: process.env.NEXT_PUBLIC_S3_BUCKET_URL || ''
+                  }}
+                >
+                  {children}
                 {buildEnv.NEXT_PUBLIC_IS_CAP && (
                   <DubAnalytics
                     domainsConfig={{
@@ -129,6 +130,7 @@ export default async function RootLayout({ children }: PropsWithChildren) {
               </PublicEnvContext>
             {/* </PostHogProvider> */}
           </TooltipPrimitive.Provider>
+          </ReactQueryProvider>
         </AuthContextProvider>
       </body>
     </html>

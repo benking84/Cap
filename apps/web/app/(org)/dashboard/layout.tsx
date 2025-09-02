@@ -23,8 +23,10 @@ export default async function DashboardLayout({
   const session = cookies().get('__session')?.value;
 
   console.log('session:', session);
+  console.log('session exists:', !!session);
   
   if (!session) {
+    console.log('No session found, redirecting to login');
     redirect('/login');
   }
 
@@ -38,27 +40,36 @@ export default async function DashboardLayout({
     console.log('Firebase user:', JSON.stringify(firebaseUser));
   } catch (error) {
     console.error('Error verifying session:', error);
-    // redirect('/login');
+    redirect('/login');
   }
 
   console.log('Firebase user:', firebaseUser);
 
   if (!firebaseUser) {
-    // redirect('/login');
-    return null; // This line will never be reached due to redirect
-  }
-
-  // Get the database user
-  const [user] = await db()
-    .select()
-    .from(users)
-    .where(eq(users.id, firebaseUser.uid))
-    .limit(1);
-
-  if (!user) {
     redirect('/login');
   }
 
+  // Get the database user
+  let user;
+  try {
+    const [dbUser] = await db()
+      .select()
+      .from(users)
+      .where(eq(users.id, firebaseUser.uid))
+      .limit(1);
+    user = dbUser;
+  } catch (error) {
+    console.error('Database error when fetching user:', error);
+    // If DB error, redirect to onboarding to create user
+    redirect('/onboarding');
+  }
+
+  // If user doesn't exist in database, redirect to onboarding
+  if (!user) {
+    redirect('/onboarding');
+  }
+
+  // If user exists but hasn't completed onboarding, redirect to onboarding
   if (!user.name || user.name.length <= 1) {
     redirect("/onboarding");
   }

@@ -1,4 +1,4 @@
-import { getCurrentUser } from "@cap/database/auth/session";
+import { getFirebaseUser } from "@cap/database/auth/firebase-session";
 import { LogoBadge } from "@cap/ui";
 import { redirect } from "next/navigation";
 import { Onboarding } from "./Onboarding";
@@ -6,7 +6,7 @@ import { Onboarding } from "./Onboarding";
 export const dynamic = "force-dynamic";
 
 export default async function OnboardingPage() {
-  const user = await getCurrentUser();
+  const user = await getFirebaseUser();
 
   if (!user) {
     redirect("/login");

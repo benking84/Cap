@@ -1,6 +1,6 @@
 "use server";
 
-import { getCurrentUser } from "@cap/database/auth/session";
+import { getFirebaseUser } from "@cap/database/auth/firebase-session";
 import { createBucketProvider } from "@/utils/s3";
 import { db } from "@cap/database";
 import { s3Buckets, videos } from "@cap/database/schema";
@@ -27,7 +27,7 @@ async function getVideoUploadPresignedUrl({
   videoCodec?: string;
   audioCodec?: string;
 }) {
-  const user = await getCurrentUser();
+  const user = await getFirebaseUser();
 
   if (!user) {
     throw new Error("Unauthorized");
@@ -164,7 +164,7 @@ export async function createVideoAndGetUploadUrl({
   isUpload?: boolean;
   folderId?: string;
 }) {
-  const user = await getCurrentUser();
+  const user = await getFirebaseUser();
 
   if (!user) {
     throw new Error("Unauthorized");

@@ -44,7 +44,7 @@ const encryptedTextNullable = customType<{ data: string; notNull: false }>({
 export const users = mysqlTable(
   "users",
   {
-    id: nanoId("id").notNull().primaryKey().unique(),
+    id: varchar("id", { length: 50 }).notNull().primaryKey().unique(),
     name: varchar("name", { length: 255 }),
     lastName: varchar("lastName", { length: 255 }),
     email: varchar("email", { length: 255 }).unique().notNull(),
@@ -79,7 +79,7 @@ export const accounts = mysqlTable(
   "accounts",
   {
     id: nanoId("id").notNull().primaryKey().unique(),
-    userId: nanoId("userId").notNull(),
+    userId: varchar("userId", { length: 50 }).notNull(),
     type: varchar("type", { length: 255 }).notNull(),
     provider: varchar("provider", { length: 255 }).notNull(),
     providerAccountId: varchar("providerAccountId", { length: 255 }).notNull(),
@@ -107,7 +107,7 @@ export const sessions = mysqlTable(
   {
     id: nanoId("id").notNull().primaryKey().unique(),
     sessionToken: varchar("sessionToken", { length: 255 }).unique().notNull(),
-    userId: nanoId("userId").notNull(),
+    userId: varchar("userId", { length: 50 }).notNull(),
     expires: datetime("expires").notNull(),
     created_at: timestamp("created_at").notNull().defaultNow(),
     updated_at: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
@@ -131,7 +131,7 @@ export const organizations = mysqlTable(
   {
     id: nanoId("id").notNull().primaryKey().unique(),
     name: varchar("name", { length: 255 }).notNull(),
-    ownerId: nanoId("ownerId").notNull(),
+    ownerId: varchar("ownerId", { length: 50 }).notNull(),
     metadata: json("metadata"),
     allowedEmailDomain: varchar("allowedEmailDomain", { length: 255 }),
     customDomain: varchar("customDomain", { length: 255 }),
@@ -152,7 +152,7 @@ export const organizationMembers = mysqlTable(
   "organization_members",
   {
     id: nanoId("id").notNull().primaryKey().unique(),
-    userId: nanoId("userId").notNull(),
+    userId: varchar("userId", { length: 50 }).notNull(),
     organizationId: nanoId("organizationId").notNull(),
     role: varchar("role", { length: 255 }).notNull(),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
@@ -221,7 +221,7 @@ export const videos = mysqlTable(
   "videos",
   {
     id: nanoId("id").notNull().primaryKey().unique(),
-    ownerId: nanoId("ownerId").notNull(),
+    ownerId: varchar("ownerId", { length: 50 }).notNull(),
     name: varchar("name", { length: 255 }).notNull().default("My Video"),
     // DEPRECATED
     awsRegion: varchar("awsRegion", { length: 255 }),
@@ -470,7 +470,7 @@ export const spaceMembers = mysqlTable(
   {
     id: nanoId("id").notNull().primaryKey().unique(),
     spaceId: nanoId("spaceId").notNull(),
-    userId: nanoId("userId").notNull(),
+    userId: varchar("userId", { length: 50 }).notNull(),
     role: varchar("role", { length: 255 }).notNull().default("member"),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow().onUpdateNow(),
