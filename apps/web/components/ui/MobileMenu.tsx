@@ -1,5 +1,5 @@
 import { Button } from "@cap/ui";
-import { User } from "next-auth";
+import { type User } from "firebase/auth";
 import Link from "next/link";
 
 interface MobileMenuProps {

@@ -98,7 +98,7 @@ const Links = [
 export const Navbar = () => {
   const pathname = usePathname();
   const [showMobileMenu, setShowMobileMenu] = useState(false);
-  const auth = use(useAuthContext().user);
+  const { user: auth } = useAuthContext();
 
   return (
     <>
@@ -228,7 +228,7 @@ export const Navbar = () => {
 };
 
 function LoginOrDashboard() {
-  const auth = use(useAuthContext().user);
+  const { user: auth } = useAuthContext();
   return (
     <Button
       variant="dark"

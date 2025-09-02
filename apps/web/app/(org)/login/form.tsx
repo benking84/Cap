@@ -4,10 +4,11 @@ import { getOrganization } from "@/actions/organization/get-organization";
 import { trackEvent } from "@/app/utils/analytics";
 import { NODE_ENV } from "@cap/env";
 import { Button, Input, LogoBadge } from "@cap/ui";
+import { faGoogle } from "@fortawesome/free-brands-svg-icons";
 import {
   faArrowLeft,
   faEnvelope,
-  faExclamationCircle,
+  faExclamationCircle
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { AnimatePresence, motion } from "framer-motion";
@@ -16,9 +17,10 @@ import { LucideArrowUpRight } from "lucide-react";
 import { signIn } from "next-auth/react";
 import Image from "next/image";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { signInWithGoogle, signInWithEmail, signUpWithEmail } from "@/lib/firebase/auth";
 
 const MotionInput = motion(Input);
 const MotionLogoBadge = motion(LogoBadge);
@@ -26,9 +28,13 @@ const MotionLink = motion(Link);
 const MotionButton = motion(Button);
 
 export function LoginForm() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams?.get("next");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
   const [oauthError, setOauthError] = useState(false);
@@ -71,41 +77,170 @@ export function LoginForm() {
     handleErrors();
   }, [searchParams]);
 
-  useEffect(() => {
-    const pendingPriceId = localStorage.getItem("pendingPriceId");
-    const pendingQuantity = localStorage.getItem("pendingQuantity") ?? "1";
-    if (emailSent && pendingPriceId) {
-      localStorage.removeItem("pendingPriceId");
-      localStorage.removeItem("pendingQuantity");
+  // useEffect(() => {
+  //   const pendingPriceId = localStorage.getItem("pendingPriceId");
+  //   const pendingQuantity = localStorage.getItem("pendingQuantity") ?? "1";
+    
+  //   if (!emailSent || !pendingPriceId) return;
+    
+  //   // Clear the pending items immediately
+  //   localStorage.removeItem("pendingPriceId");
+  //   localStorage.removeItem("pendingQuantity");
+    
+  //   let mounted = true;
 
-      // Wait a bit to ensure the user is created
-      setTimeout(async () => {
-        const response = await fetch(`/api/settings/billing/subscribe`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            priceId: pendingPriceId,
-            quantity: parseInt(pendingQuantity),
-          }),
-        });
-        const data = await response.json();
+  //   const processSubscription = async () => {
+  //     try {
+  //       const response = await fetch(`/api/settings/billing/subscribe`, {
+  //         method: "POST",
+  //         headers: {
+  //           "Content-Type": "application/json",
+  //         },
+  //         body: JSON.stringify({
+  //           priceId: pendingPriceId,
+  //           quantity: parseInt(pendingQuantity),
+  //         }),
+  //       });
 
-        console.log(data);
+  //       if (!mounted) return;
 
-        if (data.url) {
-          window.location.href = data.url;
-        }
-      }, 2000);
+  //       if (!response.ok) {
+  //         throw new Error('Failed to process subscription');
+  //       }
+
+  //       const data = await response.json();
+  //       console.log('Subscription data:', data);
+
+  //       if (data?.url) {
+  //         window.location.href = data.url;
+  //       } else {
+  //         // If no URL, redirect to dashboard
+  //         window.location.href = next || '/dashboard';
+  //       }
+  //     } catch (error) {
+  //       console.error('Error processing subscription:', error);
+  //       // Redirect to dashboard on error to prevent loop
+  //       window.location.href = next || '/dashboard';
+  //     }
+  //   };
+
+  //   // Add a small delay to ensure the user is created
+  //   const timer = setTimeout(processSubscription, 2000);
+
+  //   return () => {
+  //     mounted = false;
+  //     clearTimeout(timer);
+  //   };
+  // }, [emailSent, next]); // Add next to dependencies
+
+  const handleGoogleSignIn = async () => {
+    trackEvent("Google Sign In Clicked", { location: "login" });
+  
+    try {
+      setLoading(true);
+      
+      const result = await signInWithGoogle();
+      // Get the ID token
+      const idToken = await result.user.getIdToken();
+      
+      // First, create the session cookie
+      const sessionResponse = await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ idToken }),
+        credentials: 'include',
+      });
+      
+      if (!sessionResponse.ok) {
+        const error = await sessionResponse.json();
+        throw new Error(error.error || 'Failed to create session');
+      }
+      
+      // Then set the token in cookies for immediate client-side access
+      const tokenResponse = await fetch('/api/auth/session/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ idToken }),
+        credentials: 'include',
+      });
+      
+      if (!tokenResponse.ok) {
+        throw new Error('Failed to set auth token');
+      }
+      
+      // Force a hard refresh to ensure all auth state is properly set
+      const callbackUrl = next || '/dashboard';
+      window.location.href = callbackUrl;
+      
+    } catch (error: any) {
+      console.error('Google sign in error:', error);
+      toast.error(error.message || 'Failed to sign in with Google');
+      setLoading(false);
     }
-  }, [emailSent]);
+  };
+  
+  const handleFirebaseEmailSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) {
+      toast.error('Please enter both email and password');
+      return;
+    }
 
-  const handleGoogleSignIn = () => {
-    trackEvent("auth_started", { method: "google", is_signup: true });
-    signIn("google", {
-      ...(next && next.length > 0 ? { callbackUrl: next } : {}),
-    });
+    try {
+      setLoading(true);
+      let result;
+      
+      if (isSignUp) {
+        result = await signUpWithEmail(email, password, name);
+      } else {
+        result = await signInWithEmail(email, password);
+      }
+      
+      // Get the ID token
+      const idToken = await result.user.getIdToken();
+      
+      // First, create the session cookie
+      const sessionResponse = await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ idToken }),
+        credentials: 'include',
+      });
+      
+      if (!sessionResponse.ok) {
+        const error = await sessionResponse.json();
+        throw new Error(error.error || 'Failed to create session');
+      }
+      
+      // Then set the token in cookies for immediate client-side access
+      const tokenResponse = await fetch('/api/auth/session/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ idToken }),
+        credentials: 'include',
+      });
+      
+      if (!tokenResponse.ok) {
+        throw new Error('Failed to set auth token');
+      }
+      
+      // Force a hard refresh to ensure all auth state is properly set
+      const callbackUrl = next || '/dashboard';
+      window.location.href = callbackUrl;
+      
+    } catch (error: any) {
+      console.error('Error during authentication:', error);
+      toast.error(error.message || 'Failed to sign in');
+      setLoading(false);
+    }
   };
 
   const handleOrganizationLookup = async (e: React.FormEvent) => {
@@ -130,175 +265,87 @@ export function LoginForm() {
   };
 
   return (
-    <motion.div
-      layout
-      transition={{
-        layout: { duration: 0.3, ease: "easeInOut" },
-        height: { duration: 0.3, ease: "easeInOut" }
-      }}
-      className="overflow-hidden relative w-[calc(100%-5%)] p-[28px] max-w-[432px] bg-gray-3 border border-gray-5 rounded-2xl"
-    >
-      <motion.div
-        layout="position"
-        key="back-button"
-        initial={{ opacity: 0, display: "none" }}
-        animate={{
-          opacity: showOrgInput ? 1 : 0,
-          display: showOrgInput ? "flex" : "none",
-          transition: { duration: 0.1, delay: 0.2 },
-        }}
-        onClick={() => setShowOrgInput(false)}
-        className="absolute overflow-hidden top-5 rounded-full left-5 z-20 hover:bg-gray-1 gap-2 items-center py-1.5 px-3 text-gray-12 bg-transparent border border-gray-4 transition-colors duration-300 cursor-pointer"
-      >
-        <FontAwesomeIcon className="w-2" icon={faArrowLeft} />
-        <motion.p layout="position" className="text-xs text-inherit">Back</motion.p>
-      </motion.div>
-      <MotionLink layout="position" className="flex mx-auto size-fit" href="/">
-        <MotionLogoBadge
-          layout="position"
-          className="w-[72px] h-[72px]"
-        />
-      </MotionLink>
-      <motion.div layout="position" className="flex flex-col justify-center items-center my-7 text-left">
-        <motion.h1 key="title" layout="position" className="text-2xl font-semibold text-gray-12">Sign in to Cap</motion.h1>
-        <motion.p key="subtitle" layout="position" className="text-[16px] text-gray-10">
-          Beautiful screen recordings, owned by you.
-        </motion.p>
-      </motion.div>
-      <motion.div layout="position" className="flex flex-col space-y-3">
-        <Suspense
-          fallback={
-            <>
-              <Button disabled={true} variant="primary" />
-              <Button disabled={true} variant="destructive" />
-              <div className="mx-auto w-3/4 h-5 rounded-lg bg-gray-1" />
-            </>
-          }
-        >
-          <motion.div
-            layout
-            className="flex flex-col space-y-3"
-          >
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.div
-                key={showOrgInput ? "sso-wrapper" : "email-wrapper"}
-                layout
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.25, ease: "easeInOut", opacity: { delay: 0.05 } }}
-                className="px-1"
-              >
-                {showOrgInput ? (
-                  <motion.div
-                    key="sso"
-                    layout
-                    className="min-w-fit"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0, transition: { delay: 0.1 } }}
-                    exit={{ opacity: 0, y: -10, transition: { duration: 0.1 } }}
-                    transition={{ duration: 0.2, ease: "easeInOut" }}
-                  >
-                    <LoginWithSSO
-                      handleOrganizationLookup={handleOrganizationLookup}
-                      organizationId={organizationId}
-                      setOrganizationId={setOrganizationId}
-                      organizationName={organizationName}
-                    />
-                  </motion.div>
-                ) : (
-                  <motion.form
-                    key="email"
-                    layout
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0, transition: { duration: 0.1 } }}
-                    exit={{ opacity: 0, y: -10, transition: { duration: 0.15 } }}
-                    transition={{ duration: 0.2, ease: "easeInOut", opacity: { delay: 0.05 } }}
-                    onSubmit={async (e) => {
-                      e.preventDefault();
-                      if (!email) return;
+    <div className="flex min-h-screen w-full flex-col items-center justify-center bg-background">
+      <div className="w-full max-w-md px-4">
+        <div className="mb-12 flex w-full justify-center">
+          <MotionLogoBadge
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="h-10 w-auto"
+          />
+        </div>
 
-                      setLoading(true);
-                      trackEvent("auth_started", {
-                        method: "email",
-                        is_signup: !oauthError,
-                      });
-                      signIn("email", {
-                        email,
-                        redirect: false,
-                        ...(next && next.length > 0 ? { callbackUrl: next } : {}),
-                      })
-                        .then((res) => {
-                          setLoading(false);
-                          if (res?.ok && !res?.error) {
-                            setEmailSent(true);
-                            trackEvent("auth_email_sent", {
-                              email_domain: email.split("@")[1],
-                            });
-                            toast.success("Email sent - check your inbox!");
-                          } else {
-                            toast.error("Error sending email - try again?");
-                          }
-                        })
-                        .catch(() => {
-                          setEmailSent(false);
-                          setLoading(false);
-                          toast.error("Error sending email - try again?");
-                        });
-                    }}
-                    className="flex flex-col space-y-3"
-                  >
-                    <NormalLogin
-                      setShowOrgInput={setShowOrgInput}
-                      email={email}
-                      emailSent={emailSent}
-                      setEmail={setEmail}
-                      loading={loading}
-                      oauthError={oauthError}
-                      handleGoogleSignIn={handleGoogleSignIn}
-                    />
-                  </motion.form>
-                )}
-              </motion.div>
+        <motion.div
+          layout
+          className="mx-auto w-full max-w-md overflow-hidden rounded-2xl border border-border bg-card p-8 shadow-lg"
+        >
+          <motion.div layout className="space-y-6">
+            <motion.div layout className="space-y-2 text-center">
+              <motion.h1
+                layout
+                className="text-2xl font-bold text-foreground"
+              >
+                {isSignUp ? 'Create an account' : 'Welcome back'}
+              </motion.h1>
+              <motion.p
+                layout
+                className="text-sm text-muted-foreground"
+              >
+                {isSignUp
+                  ? 'Enter your details to create an account'
+                  : 'Enter your credentials to sign in to your account'}
+              </motion.p>
+            </motion.div>
+
+            
+
+            <AnimatePresence mode="wait">
+                <form
+                  onSubmit={handleFirebaseEmailSignIn}
+                  className="flex flex-col space-y-3"
+                >
+                  <NormalLogin
+                    setShowOrgInput={setShowOrgInput}
+                    email={email}
+                    emailSent={emailSent}
+                    setEmail={setEmail}
+                    loading={loading}
+                    oauthError={oauthError}
+                    handleGoogleSignIn={handleGoogleSignIn}
+                  />
+                </form>
             </AnimatePresence>
-            <motion.p
-              layout="position" className="pt-3 text-xs text-center text-gray-9">
-              By typing your email and clicking continue, you acknowledge that
-              you have both read and agree to Cap's{" "}
-              <Link
-                href="/terms"
-                target="_blank"
-                className="text-xs font-semibold text-gray-12 hover:text-blue-300"
+
+            {/* Divider */}
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-border"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="bg-background px-2 text-muted-foreground">
+                  Or continue with
+                </span>
+              </div>
+            </div>
+
+            {/* Social Login Buttons */}
+            <div className="grid grid-cols-1 gap-3">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={handleGoogleSignIn}
+                disabled={loading}
+                className="flex items-center justify-center gap-2"
               >
-                Terms of Service
-              </Link>{" "}
-              and{" "}
-              <Link
-                href="/privacy"
-                target="_blank"
-                className="text-xs font-semibold text-gray-12 hover:text-blue-300"
-              >
-                Privacy Policy
-              </Link>
-              .
-            </motion.p>
+                <FontAwesomeIcon icon={faGoogle} className="h-4 w-4" />
+                <span>Continue with Google</span>
+              </Button>
+            </div>
           </motion.div>
-          {emailSent && (
-            <motion.button
-              layout
-              className="pt-3 mx-auto text-sm underline text-gray-10 hover:text-gray-8"
-              onClick={() => {
-                setEmailSent(false);
-                setEmail("");
-                setLoading(false);
-              }}
-            >
-              Click to restart sign in process
-            </motion.button>
-          )}
-        </Suspense>
-      </motion.div>
-    </motion.div>
+        </motion.div>
+      </div>
+    </div>
   );
 }
 
@@ -323,7 +370,7 @@ const LoginWithSSO = ({
         className="w-full max-w-full"
       />
       {organizationName && (
-        <p className="text-sm text-gray-1">
+        <p className="text-sm text-muted-foreground">
           Signing in to: {organizationName}
         </p>
       )}
@@ -394,15 +441,15 @@ const NormalLogin = ({
                 )} */}
       </motion.div>
       <div className="flex gap-4 items-center my-4">
-        <span className="flex-1 h-px bg-gray-5" />
-        <p className="text-sm text-center text-gray-10">OR</p>
-        <span className="flex-1 h-px bg-gray-5" />
+        <span className="flex-1 h-px bg-border" />
+        <p className="text-sm text-center text-muted-foreground">OR</p>
+        <span className="flex-1 h-px bg-border" />
       </div>
       <motion.div layout className="flex flex-col gap-3 justify-center items-center">
         {!oauthError && (
           <>
             <MotionButton
-              variant="gray"
+              variant="outline"
               type="button"
               className="flex gap-2 justify-center items-center w-full text-sm"
               onClick={handleGoogleSignIn}

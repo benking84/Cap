@@ -1,6 +1,7 @@
-import { getCurrentUser } from "@cap/database/auth/session";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { getAuth } from "firebase-admin/auth";
+import { getFirebaseAdminAuth } from "@/lib/firebase/admin";
 
 import { getDashboardData, Organization, Spaces } from "./dashboard-data";
 import DashboardInner from "./_components/DashboardInner";
@@ -8,18 +9,54 @@ import { DashboardContexts } from "./Contexts";
 import DesktopNav from "./_components/Navbar/Desktop";
 import MobileNav from "./_components/Navbar/Mobile";
 
+import { db } from "@cap/database";
+import { users } from "@cap/database/schema";
+import { eq } from "drizzle-orm";
+
 export const dynamic = "force-dynamic";
 import { UploadingProvider } from "./caps/UploadingContext";
-
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const user = await getCurrentUser();
+  const session = cookies().get('__session')?.value;
 
-  if (!user || !user.id) {
-    redirect("/login");
+  console.log('session:', session);
+  
+  if (!session) {
+    redirect('/login');
+  }
+
+  // Get the Firebase user
+  let firebaseUser: import('firebase-admin/auth').UserRecord | undefined;
+  try {
+    const auth = getFirebaseAdminAuth();
+    const decodedToken = await auth.verifySessionCookie(session);
+    console.log('decodedToken:', JSON.stringify(decodedToken));
+    firebaseUser = await auth.getUser(decodedToken.uid);
+    console.log('Firebase user:', JSON.stringify(firebaseUser));
+  } catch (error) {
+    console.error('Error verifying session:', error);
+    // redirect('/login');
+  }
+
+  console.log('Firebase user:', firebaseUser);
+
+  if (!firebaseUser) {
+    // redirect('/login');
+    return null; // This line will never be reached due to redirect
+  }
+
+  // Get the database user
+  const [user] = await db()
+    .select()
+    .from(users)
+    .where(eq(users.id, firebaseUser.uid))
+    .limit(1);
+
+  if (!user) {
+    redirect('/login');
   }
 
   if (!user.name || user.name.length <= 1) {

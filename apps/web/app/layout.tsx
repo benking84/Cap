@@ -20,7 +20,6 @@ import {
 import { script } from "./themeScript";
 import { getCurrentUser } from "@cap/database/auth/session";
 import { AuthContextProvider } from "./Layout/AuthContext";
-import { PosthogIdentify } from "./Layout/PosthogIdentify";
 
 const defaultFont = localFont({
   src: [
@@ -73,6 +72,7 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
+
 export default async function RootLayout({ children }: PropsWithChildren) {
   const bootstrapData = await getBootstrapData();
   const userPromise = getCurrentUser();
@@ -104,37 +104,32 @@ export default async function RootLayout({ children }: PropsWithChildren) {
         <meta name="theme-color" content="#ffffff" />
       </head>
       <body suppressHydrationWarning>
-        <script
-          dangerouslySetInnerHTML={{ __html: `(${script.toString()})()` }}
-        />
-        <TooltipPrimitive.Provider>
-          <PostHogProvider bootstrapData={bootstrapData}>
-            <AuthContextProvider user={userPromise}>
-              <SessionProvider>
-                <PublicEnvContext
-                  value={{
-                    webUrl: buildEnv.NEXT_PUBLIC_WEB_URL,
-                    awsBucket: buildEnv.NEXT_PUBLIC_CAP_AWS_BUCKET,
-                    s3BucketUrl: S3_BUCKET_URL,
-                  }}
-                >
-                  <ReactQueryProvider>
-                    <SonnerToaster />
-                    <main className="w-full">{children}</main>
-                    <PosthogIdentify />
-                  </ReactQueryProvider>
-                </PublicEnvContext>
-              </SessionProvider>
-            </AuthContextProvider>
-          </PostHogProvider>
-        </TooltipPrimitive.Provider>
-        {buildEnv.NEXT_PUBLIC_IS_CAP && (
-          <DubAnalytics
-            domainsConfig={{
-              refer: "go.cap.so",
-            }}
+        <AuthContextProvider>
+          <script
+            dangerouslySetInnerHTML={{ __html: `(${script.toString()})()` }}
           />
-        )}
+          <TooltipPrimitive.Provider>
+            {/* <PostHogProvider bootstrapData={bootstrapData}> */}
+              <PublicEnvContext
+                value={{
+                  webUrl: process.env.NEXT_PUBLIC_WEB_URL || '',
+                  awsBucket: process.env.NEXT_PUBLIC_AWS_BUCKET || '',
+                  s3BucketUrl: process.env.NEXT_PUBLIC_S3_BUCKET_URL || ''
+                }}
+              >
+                {children}
+                {buildEnv.NEXT_PUBLIC_IS_CAP && (
+                  <DubAnalytics
+                    domainsConfig={{
+                      refer: "go.cap.so",
+                    }}
+                  />
+                )}
+                <SonnerToaster />
+              </PublicEnvContext>
+            {/* </PostHogProvider> */}
+          </TooltipPrimitive.Provider>
+        </AuthContextProvider>
       </body>
     </html>
   );
