@@ -4,9 +4,9 @@ import { cache } from "react";
 import { db } from "../";
 import { users } from "../schema";
 
-// Import Firebase admin from the web app
+// Import Firebase admin locally to avoid cross-package import and rootDir errors
 async function getFirebaseAdminAuth() {
-  const { getFirebaseAdminAuth } = await import("../../../apps/web/lib/firebase/admin");
+  const { getFirebaseAdminAuth } = await import("./firebase-admin");
   return getFirebaseAdminAuth();
 }
 
@@ -33,7 +33,7 @@ export const getFirebaseUser = cache(
       if (dbUser) {
         return dbUser;
       } else {
-        // Return a user-like object with Firebase data for onboarding
+        // Return a minimal user-like object with required fields; preferences nullable
         return {
           id: firebaseUser.uid,
           email: firebaseUser.email!,
@@ -52,10 +52,14 @@ export const getFirebaseUser = cache(
           onboarding_completed_at: null,
           customBucket: null,
           inviteQuota: 1,
-        };
+          preferences: null,
+        } as InferSelectModel<typeof users>;
       }
     } catch (error) {
-      console.error('Error getting Firebase user:', error);
+      // Be quiet in production to avoid noisy logs; still return null
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('getFirebaseUser: failed to verify session cookie');
+      }
       return null;
     }
   }

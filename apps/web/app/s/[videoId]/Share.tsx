@@ -75,7 +75,8 @@ const useVideoStatus = (
 		} | null;
 	},
 ) => {
-	return useQuery({
+  const maxPollAttemptsRef = useRef<number>(0);
+  return useQuery({
 		queryKey: ["videoStatus", videoId],
 		queryFn: async (): Promise<VideoStatusResult> => {
 			const res = await getVideoStatus(videoId);
@@ -96,9 +97,20 @@ const useVideoStatus = (
 					chapters: initialData.aiData?.chapters || null,
 				}
 			: undefined,
-		refetchInterval: (query) => {
+    // Disable automatic retry-on-error; suppress noisy logs
+    retry: false,
+    refetchInterval: (query) => {
 			const data = query.state.data;
-			if (!data) return 2000;
+      // Stop polling when tab is hidden
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        return false;
+      }
+      // Cap total number of polls to avoid infinite loops in error states
+      if (maxPollAttemptsRef.current >= 60) {
+        return false;
+      }
+      maxPollAttemptsRef.current += 1;
+      if (!data) return 2000;
 
 			const shouldContinuePolling = () => {
 				if (
@@ -131,7 +143,7 @@ const useVideoStatus = (
 				return false;
 			};
 
-			return shouldContinuePolling() ? 2000 : false;
+      return shouldContinuePolling() ? 2000 : false;
 		},
 		refetchIntervalInBackground: false,
 		staleTime: 1000,
@@ -163,7 +175,7 @@ export const Share = ({
 		},
 	);
 
-	const { data: videoStatus } = useVideoStatus(data.id, aiGenerationEnabled, {
+    const { data: videoStatus } = useVideoStatus(data.id as Video.VideoId, aiGenerationEnabled, {
 		transcriptionStatus: data.transcriptionStatus,
 		aiData: initialAiData,
 	});

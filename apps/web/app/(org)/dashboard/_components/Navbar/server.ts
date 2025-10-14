@@ -11,9 +11,10 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { createSpace as createSpaceAction } from "@/actions/organization/create-space";
 import { updateSpace as updateSpaceAction } from "@/actions/organization/update-space";
+import { getFirebaseUser } from "@cap/database/auth/firebase-session";
 
 export async function updateActiveOrganization(organizationId: string) {
-	const user = await getCurrentUser();
+	const user = await getFirebaseUser();
 	if (!user) throw new Error("Unauthorized");
 
 	const [organization] = await db()

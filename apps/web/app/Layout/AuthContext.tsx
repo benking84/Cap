@@ -29,11 +29,11 @@ export function AuthContextProvider({ children }: { children: React.ReactNode })
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
-          // Force token refresh to ensure it's valid
-          await user.getIdToken(true);
+          // Avoid forced refresh to prevent repeated calls to securetoken API
+          await user.getIdToken();
           setUser(user);
         } catch (error) {
-          console.error('Error refreshing token:', error);
+          console.error('Error getting token:', error);
           setUser(null);
         }
       } else {
@@ -61,7 +61,7 @@ export function AuthContextProvider({ children }: { children: React.ReactNode })
     initialized,
   };
 
-  console.log({user});
+  
 
   return (
     <AuthContext.Provider value={value}>

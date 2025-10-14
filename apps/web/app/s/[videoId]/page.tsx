@@ -32,6 +32,7 @@ import { isAiGenerationEnabled } from "@/utils/flags";
 import { PasswordOverlay } from "./_components/PasswordOverlay";
 import { ShareHeader } from "./_components/ShareHeader";
 import { Share } from "./Share";
+import { getFirebaseUser } from "@cap/database/auth/firebase-session";
 
 export const dynamic = "auto";
 export const dynamicParams = true;
@@ -246,6 +247,9 @@ export function generateMetadata({ params }: Props): Promise<Metadata> {
 				}),
 		}),
 		provideOptionalAuth,
+		Effect.catchAll(() =>
+			Effect.succeed({ title: "Cap" } as Metadata),
+		),
 		EffectRuntime.runPromise,
 	);
 }
@@ -325,6 +329,15 @@ export default async function ShareVideoPage(props: Props) {
 			},
 		}),
 		provideOptionalAuth,
+		Effect.catchAll(() =>
+			Effect.succeed(
+				<div className="flex flex-col justify-center items-center p-4 min-h-screen text-center">
+					<Logo className="size-32" />
+					<h1 className="mb-2 text-2xl font-semibold">Something went wrong</h1>
+					<p className="text-gray-400">Please refresh the page and try again.</p>
+				</div>,
+			),
+		),
 		EffectRuntime.runPromise,
 	);
 }
@@ -340,7 +353,7 @@ async function AuthorizedContent({
 	searchParams: { [key: string]: string | string[] | undefined };
 }) {
 	// will have already been fetched if auth is required
-	const user = await getCurrentUser();
+	const user = await getFirebaseUser();
 	const videoId = video.id;
 
 	if (user && video && user.id !== video.ownerId) {

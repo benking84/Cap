@@ -51,20 +51,19 @@ async function verifyIdToken(auth: any, idToken: string) {
 export async function middleware(request: NextRequest) {
   const url = new URL(request.url);
   const path = url.pathname;
-  
-  console.log('--- MIDDLEWARE RUNNING ---', {
-    url: request.url,
-    path,
-    hostname: url.hostname,
-    method: request.method,
-    headers: Object.fromEntries(request.headers.entries())
-  });
+  // Quiet middleware: avoid noisy logs in development and production
   
   // Handle auth callback
   if (path.startsWith('/api/auth/callback/firebase-credentials')) {
     return NextResponse.next();
   }
   
+  // Short-circuit for static assets and API routes to avoid unnecessary work
+  // e.g. /site.webmanifest, /*.png, /*.svg, etc.
+  if (path.includes('.') || path.startsWith('/api')) {
+    return NextResponse.next();
+  }
+
   // Check if current path is public
   const isPublicPath = publicPaths.some(publicPath => 
     path === publicPath || path.startsWith(`${publicPath}/`)
@@ -84,14 +83,8 @@ export async function middleware(request: NextRequest) {
   const authToken = request.cookies.get('__session')?.value;
   console.log('Middleware - Token:', { hasToken: !!authToken, path });
   
-  // For API routes, we'll handle authentication in the route handlers
-  if (path.startsWith('/api/')) {
-    return NextResponse.next();
-  }
-
   // Skip auth checks for dashboard routes - let the layout handle authentication
   if (path.startsWith('/dashboard')) {
-    console.log('Dashboard route - letting layout handle auth');
     return NextResponse.next();
   }
 
@@ -224,6 +217,8 @@ export async function middleware(request: NextRequest) {
 //     console.error("Error in middleware:", error);
 //     return notFound();
 //   }
+  // Default: allow request to proceed
+  return NextResponse.next();
 }
 
 export const config = {
