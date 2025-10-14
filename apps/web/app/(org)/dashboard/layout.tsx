@@ -112,18 +112,28 @@ export default async function DashboardLayout({
 	const theme = cookies().get("theme")?.value ?? "light";
 	const sidebar = cookies().get("sidebarCollapsed")?.value ?? "false";
 
+	// Ensure organizationData is always an array
+	const safeOrganizationSelect = Array.isArray(organizationSelect) ? organizationSelect : [];
+
+	console.log('Dashboard Layout - Organization Data:', {
+	  organizationSelect: safeOrganizationSelect,
+	  activeOrganization,
+	  user: { id: user?.id, email: user?.email, activeOrgId: user?.activeOrganizationId },
+	  hasOrgs: safeOrganizationSelect.length > 0
+	});
+
 	return (
 		<UploadingProvider>
 			<DashboardContexts
-				organizationData={organizationSelect}
+				organizationData={safeOrganizationSelect}
 				activeOrganization={activeOrganization || null}
-				spacesData={spacesData}
+				spacesData={spacesData || []}
 				user={user}
 				isSubscribed={isSubscribed}
 				initialTheme={theme as "light" | "dark"}
 				initialSidebarCollapsed={sidebar === "true"}
 				anyNewNotifications={anyNewNotifications}
-				userPreferences={userPreferences}
+				userPreferences={userPreferences || null}
 			>
 				<div className="grid grid-cols-[auto,1fr] overflow-y-auto bg-gray-1 grid-rows-[auto,1fr] h-dvh min-h-dvh">
 					<aside className="z-10 col-span-1 row-span-2">

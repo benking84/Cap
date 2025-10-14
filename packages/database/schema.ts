@@ -70,6 +70,14 @@ export const users = mysqlTable(
     onboarding_completed_at: timestamp("onboarding_completed_at"),
     customBucket: nanoIdNullable("customBucket"),
     inviteQuota: int("inviteQuota").notNull().default(1),
+    preferences: json("preferences").$type<{
+      notifications?: {
+        email?: boolean;
+        desktop?: boolean;
+      };
+      theme?: "light" | "dark" | "system";
+      language?: string;
+    }>(),
   },
   (table) => ({
     emailIndex: uniqueIndex("email_idx").on(table.email),

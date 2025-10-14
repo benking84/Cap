@@ -280,10 +280,6 @@ export default async function ShareVideoPage(props: Props) {
 					skipProcessing: videos.skipProcessing,
 					transcriptionStatus: videos.transcriptionStatus,
 					source: videos.source,
-					width: videos.width,
-					height: videos.height,
-					duration: videos.duration,
-					fps: videos.fps,
 					hasPassword: sql<number>`IF(${videos.password} IS NULL, 0, 1)`,
 					sharedOrganization: {
 						organizationId: sharedVideos.organizationId,

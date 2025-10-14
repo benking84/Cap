@@ -80,13 +80,13 @@ export function LoginForm() {
   // useEffect(() => {
   //   const pendingPriceId = localStorage.getItem("pendingPriceId");
   //   const pendingQuantity = localStorage.getItem("pendingQuantity") ?? "1";
-    
+
   //   if (!emailSent || !pendingPriceId) return;
-    
+
   //   // Clear the pending items immediately
   //   localStorage.removeItem("pendingPriceId");
   //   localStorage.removeItem("pendingQuantity");
-    
+
   //   let mounted = true;
 
   //   const processSubscription = async () => {
@@ -135,14 +135,14 @@ export function LoginForm() {
 
   const handleGoogleSignIn = async () => {
     trackEvent("Google Sign In Clicked", { location: "login" });
-  
+
     try {
       setLoading(true);
-      
+
       const result = await signInWithGoogle();
       // Get the ID token
       const idToken = await result.user.getIdToken();
-      
+
       // Create the session cookie
       console.log('Creating session with ID token...');
       const sessionResponse = await fetch('/api/auth/session', {
@@ -153,30 +153,30 @@ export function LoginForm() {
         body: JSON.stringify({ idToken }),
         credentials: 'include',
       });
-      
+
       console.log('Session response status:', sessionResponse.status);
-      
+
       if (!sessionResponse.ok) {
         const error = await sessionResponse.json();
         console.error('Session creation failed:', error);
         throw new Error(error.error || 'Failed to create session');
       }
-      
+
       const sessionData = await sessionResponse.json();
       console.log('Session created successfully:', sessionData);
-      
-      
+
+
       // Force a hard refresh to ensure all auth state is properly set
       const callbackUrl = next || '/dashboard';
       window.location.href = callbackUrl;
-      
+
     } catch (error: any) {
       console.error('Google sign in error:', error);
       toast.error(error.message || 'Failed to sign in with Google');
       setLoading(false);
     }
   };
-  
+
   const handleFirebaseEmailSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
@@ -187,16 +187,16 @@ export function LoginForm() {
     try {
       setLoading(true);
       let result;
-      
+
       if (isSignUp) {
         result = await signUpWithEmail(email, password, name);
       } else {
         result = await signInWithEmail(email, password);
       }
-      
+
       // Get the ID token
       const idToken = await result.user.getIdToken();
-      
+
       // Create the session cookie
       console.log('Creating session with ID token...');
       const sessionResponse = await fetch('/api/auth/session', {
@@ -207,23 +207,23 @@ export function LoginForm() {
         body: JSON.stringify({ idToken }),
         credentials: 'include',
       });
-      
+
       console.log('Session response status:', sessionResponse.status);
-      
+
       if (!sessionResponse.ok) {
         const error = await sessionResponse.json();
         console.error('Session creation failed:', error);
         throw new Error(error.error || 'Failed to create session');
       }
-      
+
       const sessionData = await sessionResponse.json();
       console.log('Session created successfully:', sessionData);
-      
-      
+
+
       // Force a hard refresh to ensure all auth state is properly set
       const callbackUrl = next || '/dashboard';
       window.location.href = callbackUrl;
-      
+
     } catch (error: any) {
       console.error('Error during authentication:', error);
       toast.error(error.message || 'Failed to sign in');
@@ -286,24 +286,33 @@ export function LoginForm() {
               </motion.p>
             </motion.div>
 
-            
+
 
             <AnimatePresence mode="wait">
-                <form
-                  onSubmit={handleFirebaseEmailSignIn}
-                  className="flex flex-col space-y-3"
-                >
-                  <NormalLogin
-                    setShowOrgInput={setShowOrgInput}
-                    email={email}
-                    emailSent={emailSent}
-                    setEmail={setEmail}
-                    loading={loading}
-                    oauthError={oauthError}
-                    handleGoogleSignIn={handleGoogleSignIn}
-                  />
-                </form>
+              <form
+                onSubmit={handleFirebaseEmailSignIn}
+                className="flex flex-col space-y-3"
+              >
+                <NormalLogin
+                  setShowOrgInput={setShowOrgInput}
+                  email={email}
+                  emailSent={emailSent}
+                  setEmail={setEmail}
+                  loading={loading}
+                  oauthError={oauthError}
+                  handleGoogleSignIn={handleGoogleSignIn}
+                />
+              </form>
             </AnimatePresence>
+
+            {showOrgInput && (
+              <LoginWithSSO
+                handleOrganizationLookup={handleOrganizationLookup}
+                organizationId={organizationId}
+                setOrganizationId={setOrganizationId}
+                organizationName={organizationName}
+              />
+            )}
 
             {/* Divider */}
             <div className="relative my-6">

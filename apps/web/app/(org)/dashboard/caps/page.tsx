@@ -102,8 +102,14 @@ export default async function CapsPage({
 }) {
   const user = await getFirebaseUser();
 
+  console.log("user", user);
+
 	if (!user || !user.id) {
 		redirect("/login");
+	}
+
+	if (!user.activeOrganizationId) {
+		redirect("/org");
 	}
 
 	const userId = user.id;
@@ -128,6 +134,8 @@ export default async function CapsPage({
 		.where(eq(organizations.id, user.activeOrganizationId))
 		.limit(1);
 
+	console.log("organizationData", organizationData);
+
 	let customDomain: string | null = null;
 	let domainVerified = false;
 
@@ -149,7 +157,6 @@ export default async function CapsPage({
 			name: videos.name,
 			createdAt: videos.createdAt,
 			metadata: videos.metadata,
-			duration: videos.duration,
 			public: videos.public,
 			totalComments: sql<number>`COUNT(DISTINCT CASE WHEN ${comments.type} = 'text' THEN ${comments.id} END)`,
 			totalReactions: sql<number>`COUNT(DISTINCT CASE WHEN ${comments.type} = 'emoji' THEN ${comments.id} END)`,
@@ -247,6 +254,7 @@ export default async function CapsPage({
 	});
 
 	return (
+		// <></>
 		<Caps
 			data={processedVideoData}
 			folders={foldersData}

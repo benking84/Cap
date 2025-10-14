@@ -78,17 +78,37 @@ const AdminNavItems = ({ toggleMobileNav }: Props) => {
 	];
 
 	const [dialogOpen, setDialogOpen] = useState(false);
+	const context = useDashboardContext();
 	const {
 		organizationData: orgData,
 		activeOrganization: activeOrg,
 		isSubscribed: userIsSubscribed,
-	} = useDashboardContext();
+		user: contextUser,
+	} = context;
+
+	console.log('Dashboard Context:', {
+	  orgData,
+	  activeOrg,
+	  contextUser: { id: contextUser?.id, email: contextUser?.email },
+	  hasOrgData: !!orgData,
+	  orgDataLength: orgData?.length,
+	  activeOrgId: activeOrg?.organization.id,
+	  userActiveOrgId: contextUser?.activeOrganizationId
+	});
+
 	const formRef = useRef<HTMLFormElement | null>(null);
 	const [createLoading, setCreateLoading] = useState(false);
 	const [organizationName, setOrganizationName] = useState("");
-	const isOwner = activeOrg?.organization.ownerId === user.id;
+	const isOwner = activeOrg?.organization.ownerId === contextUser?.id;
 	const [openAIDialog, setOpenAIDialog] = useState(false);
 	const router = useRouter();
+
+	console.log('Organization Data:', { 
+	  orgData, 
+	  activeOrg,
+	  hasOrgs: !!orgData?.length,
+	  user: { id: user?.id, email: user?.email }
+	});
 
 	const isPathActive = (path: string) => pathname.includes(path);
 
