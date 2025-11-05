@@ -141,7 +141,7 @@ export function generateMetadata({ params }: Props): Promise<Metadata> {
 							{
 								url: new URL(
 									`/api/video/og?videoId=${videoId}`,
-									buildEnv.NEXT_PUBLIC_WEB_URL,
+									buildEnv.NEXT_PUBLIC_WEB_URL || "http://localhost:3000",
 								).toString(),
 								width: 1200,
 								height: 630,
@@ -151,7 +151,7 @@ export function generateMetadata({ params }: Props): Promise<Metadata> {
 							{
 								url: new URL(
 									`/api/playlist?videoId=${video.id}`,
-									buildEnv.NEXT_PUBLIC_WEB_URL,
+									buildEnv.NEXT_PUBLIC_WEB_URL || "http://localhost:3000",
 								).toString(),
 								width: 1280,
 								height: 720,
@@ -166,17 +166,17 @@ export function generateMetadata({ params }: Props): Promise<Metadata> {
 						images: [
 							new URL(
 								`/api/video/og?videoId=${videoId}`,
-								buildEnv.NEXT_PUBLIC_WEB_URL,
+								buildEnv.NEXT_PUBLIC_WEB_URL || "http://localhost:3000",
 							).toString(),
 						],
 						players: {
 							playerUrl: new URL(
 								`/s/${videoId}`,
-								buildEnv.NEXT_PUBLIC_WEB_URL,
+								buildEnv.NEXT_PUBLIC_WEB_URL || "http://localhost:3000",
 							).toString(),
 							streamUrl: new URL(
 								`/api/playlist?videoId=${video.id}`,
-								buildEnv.NEXT_PUBLIC_WEB_URL,
+								buildEnv.NEXT_PUBLIC_WEB_URL || "http://localhost:3000",
 							).toString(),
 							width: 1280,
 							height: 720,
@@ -196,7 +196,7 @@ export function generateMetadata({ params }: Props): Promise<Metadata> {
 							{
 								url: new URL(
 									`/api/video/og?videoId=${videoId}`,
-									buildEnv.NEXT_PUBLIC_WEB_URL,
+									buildEnv.NEXT_PUBLIC_WEB_URL || "http://localhost:3000",
 								).toString(),
 								width: 1200,
 								height: 630,
@@ -206,7 +206,7 @@ export function generateMetadata({ params }: Props): Promise<Metadata> {
 							{
 								url: new URL(
 									`/api/playlist?videoId=${videoId}`,
-									buildEnv.NEXT_PUBLIC_WEB_URL,
+									buildEnv.NEXT_PUBLIC_WEB_URL || "http://localhost:3000",
 								).toString(),
 								width: 1280,
 								height: 720,
@@ -225,7 +225,7 @@ export function generateMetadata({ params }: Props): Promise<Metadata> {
 							{
 								url: new URL(
 									`/api/video/og?videoId=${videoId}`,
-									buildEnv.NEXT_PUBLIC_WEB_URL,
+									buildEnv.NEXT_PUBLIC_WEB_URL || "http://localhost:3000",
 								).toString(),
 								width: 1200,
 								height: 630,
@@ -239,7 +239,7 @@ export function generateMetadata({ params }: Props): Promise<Metadata> {
 						images: [
 							new URL(
 								`/api/video/og?videoId=${videoId}`,
-								buildEnv.NEXT_PUBLIC_WEB_URL,
+								buildEnv.NEXT_PUBLIC_WEB_URL || "http://localhost:3000",
 							).toString(),
 						],
 					},
@@ -262,8 +262,11 @@ export default async function ShareVideoPage(props: Props) {
 	return Effect.gen(function* () {
 		const videosPolicy = yield* VideosPolicy;
 
-		const [video] = yield* Effect.promise(() =>
-			db()
+		console.log("[ShareVideoPage] Looking up video with ID:", videoId);
+
+		const [video] = yield* Effect.promise(() => {
+			console.log("[ShareVideoPage] Executing database query...");
+			return db()
 				.select({
 					id: videos.id,
 					name: videos.name,
@@ -291,9 +294,16 @@ export default async function ShareVideoPage(props: Props) {
 				})
 				.from(videos)
 				.leftJoin(sharedVideos, eq(videos.id, sharedVideos.videoId))
-				.where(eq(videos.id, videoId)),
-		).pipe(Policy.withPublicPolicy(videosPolicy.canView(videoId)));
+				.where(eq(videos.id, videoId));
+		}).pipe(
+			Effect.tap((result) => {
+				console.log("[ShareVideoPage] Database query result:", result);
+				return Effect.void;
+			}),
+			Policy.withPublicPolicy(videosPolicy.canView(videoId))
+		);
 
+		console.log("[ShareVideoPage] Video found:", video);
 		return Option.fromNullable(video);
 	}).pipe(
 		Effect.flatten,
@@ -329,15 +339,24 @@ export default async function ShareVideoPage(props: Props) {
 			},
 		}),
 		provideOptionalAuth,
-		Effect.catchAll(() =>
-			Effect.succeed(
+		Effect.catchAll((error) => {
+			console.error("[ShareVideoPage] Unexpected error:", error);
+			return Effect.succeed(
 				<div className="flex flex-col justify-center items-center p-4 min-h-screen text-center">
 					<Logo className="size-32" />
 					<h1 className="mb-2 text-2xl font-semibold">Something went wrong</h1>
 					<p className="text-gray-400">Please refresh the page and try again.</p>
+					{process.env.NODE_ENV === "development" && (
+						<details className="mt-4 p-4 bg-gray-100 rounded text-left max-w-md">
+							<summary className="cursor-pointer font-semibold">Debug Info</summary>
+							<pre className="mt-2 text-xs overflow-auto">
+								{JSON.stringify({ error: String(error), videoId }, null, 2)}
+							</pre>
+						</details>
+					)}
 				</div>,
-			),
-		),
+			);
+		}),
 		EffectRuntime.runPromise,
 	);
 }
@@ -352,9 +371,10 @@ async function AuthorizedContent({
 	};
 	searchParams: { [key: string]: string | string[] | undefined };
 }) {
-	// will have already been fetched if auth is required
-	const user = await getFirebaseUser();
-	const videoId = video.id;
+	try {
+		// will have already been fetched if auth is required
+		const user = await getFirebaseUser();
+		const videoId = video.id;
 
 	if (user && video && user.id !== video.ownerId) {
 		try {
@@ -376,30 +396,52 @@ async function AuthorizedContent({
 	let spacesData = null;
 	if (user) {
 		try {
+			console.log("[AuthorizedContent] Fetching dashboard data for user:", user.id);
 			const dashboardData = await getDashboardData(user);
 			spacesData = dashboardData.spacesData;
+			console.log("[AuthorizedContent] Dashboard data fetched successfully");
 		} catch (error) {
-			console.error("Failed to fetch spaces data for sharing dialog:", error);
+			console.error("[AuthorizedContent] Failed to fetch spaces data for sharing dialog:", error);
 			spacesData = [];
 		}
 	}
 
 	// Fetch shared spaces data for this video
-	const sharedSpaces = await getSharedSpacesForVideo(videoId);
+	let sharedSpaces: Array<{
+		id: string;
+		name: string;
+		organizationId: string;
+		iconUrl?: string;
+	}> = [];
+	try {
+		console.log("[AuthorizedContent] Fetching shared spaces for video:", videoId);
+		sharedSpaces = await getSharedSpacesForVideo(videoId);
+		console.log("[AuthorizedContent] Shared spaces fetched successfully");
+	} catch (error) {
+		console.error("[AuthorizedContent] Failed to fetch shared spaces:", error);
+		sharedSpaces = [];
+	}
 
 	let aiGenerationEnabled = false;
-	const videoOwnerQuery = await db()
-		.select({
-			email: users.email,
-			stripeSubscriptionStatus: users.stripeSubscriptionStatus,
-		})
-		.from(users)
-		.where(eq(users.id, video.ownerId))
-		.limit(1);
+	try {
+		console.log("[AuthorizedContent] Fetching video owner data for AI generation check");
+		const videoOwnerQuery = await db()
+			.select({
+				email: users.email,
+				stripeSubscriptionStatus: users.stripeSubscriptionStatus,
+			})
+			.from(users)
+			.where(eq(users.id, video.ownerId))
+			.limit(1);
 
-	if (videoOwnerQuery.length > 0 && videoOwnerQuery[0]) {
-		const videoOwner = videoOwnerQuery[0];
-		aiGenerationEnabled = await isAiGenerationEnabled(videoOwner);
+		if (videoOwnerQuery.length > 0 && videoOwnerQuery[0]) {
+			const videoOwner = videoOwnerQuery[0];
+			aiGenerationEnabled = await isAiGenerationEnabled(videoOwner);
+			console.log("[AuthorizedContent] AI generation enabled:", aiGenerationEnabled);
+		}
+	} catch (error) {
+		console.error("[AuthorizedContent] Failed to check AI generation status:", error);
+		aiGenerationEnabled = false;
 	}
 
 	if (video.sharedOrganization?.organizationId) {
@@ -708,4 +750,22 @@ async function AuthorizedContent({
 			</div>
 		</>
 	);
+	} catch (error) {
+		console.error("[AuthorizedContent] Error:", error);
+		return (
+			<div className="flex flex-col justify-center items-center p-4 min-h-screen text-center">
+				<Logo className="size-32" />
+				<h1 className="mb-2 text-2xl font-semibold">Something went wrong</h1>
+				<p className="text-gray-400">Please refresh the page and try again.</p>
+				{process.env.NODE_ENV === "development" && (
+					<details className="mt-4 p-4 bg-gray-100 rounded text-left max-w-md">
+						<summary className="cursor-pointer font-semibold">Debug Info</summary>
+						<pre className="mt-2 text-xs overflow-auto">
+							{JSON.stringify({ error: String(error), videoId: video.id }, null, 2)}
+						</pre>
+					</details>
+				)}
+			</div>
+		);
+	}
 }

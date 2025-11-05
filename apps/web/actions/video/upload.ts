@@ -117,8 +117,13 @@ async function getVideoUploadPresignedUrl({
 
 		const customEndpoint = serverEnv().CAP_AWS_ENDPOINT;
 		if (customEndpoint && !customEndpoint.includes("amazonaws.com")) {
-			if (serverEnv().S3_PATH_STYLE) {
-				presignedPostData.url = `${customEndpoint}/${bucket.name}`;
+			// For GCS and other non-AWS endpoints, always use path-style with bucket name
+			// GCS requires: https://storage.googleapis.com/bucket-name
+			const isGCS = customEndpoint.includes("googleapis.com");
+			if (isGCS || serverEnv().S3_PATH_STYLE) {
+				// Remove trailing slash if present
+				const baseUrl = customEndpoint.replace(/\/$/, "");
+				presignedPostData.url = `${baseUrl}/${bucket.name}`;
 			} else {
 				presignedPostData.url = customEndpoint;
 			}

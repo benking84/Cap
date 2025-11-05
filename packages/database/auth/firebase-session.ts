@@ -6,8 +6,8 @@ import { users } from "../schema";
 
 // Import Firebase admin locally to avoid cross-package import and rootDir errors
 async function getFirebaseAdminAuth() {
-  const { getFirebaseAdminAuth } = await import("./firebase-admin");
-  return getFirebaseAdminAuth();
+  const { getFirebaseAdminAuth: getAuth } = await import("./firebase-admin");
+  return getAuth();
 }
 
 export const getFirebaseUser = cache(

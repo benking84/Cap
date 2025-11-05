@@ -1,0 +1,9 @@
+[
+  {
+    "origin": ["https://cap.so", "https://www.cap.so", "https://cap.link", "https://www.cap.link", "http://localhost:3000", "http://127.0.0.1:3000"],
+    "method": ["GET", "HEAD", "PUT", "POST", "OPTIONS"],
+    "responseHeader": ["Content-Type", "Content-Length", "Range", "Accept-Ranges", "ETag", "x-goog-resumable"],
+    "maxAgeSeconds": 3600
+  }
+]
+
