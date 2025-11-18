@@ -112,10 +112,22 @@ async function getVideoUploadPresignedUrl({
 			Expires: 1800,
 		});
 
-		const customEndpoint = serverEnv().CAP_AWS_ENDPOINT;
+		// Use custom bucket endpoint if available, otherwise fall back to server env endpoint
+		const { decrypt } = await import("@cap/database/crypto");
+		const endpointToUse = customBucket?.endpoint 
+			? await decrypt(customBucket.endpoint).catch(() => customBucket.endpoint)
+			: serverEnv().CAP_AWS_ENDPOINT;
+		
+		const customEndpoint = endpointToUse;
 		if (customEndpoint && !customEndpoint.includes("amazonaws.com")) {
-			if (serverEnv().S3_PATH_STYLE) {
-				presignedPostData.url = `${customEndpoint}/${bucket.name}`;
+			// For GCS and other non-AWS endpoints, always use path-style with bucket name
+			// GCS requires: https://storage.googleapis.com/bucket-name
+			const isGCS = customEndpoint.includes("googleapis.com");
+			
+			if (isGCS || serverEnv().S3_PATH_STYLE || customBucket?.endpoint) {
+				// Remove trailing slash if present
+				const baseUrl = customEndpoint.replace(/\/$/, "");
+				presignedPostData.url = `${baseUrl}/${bucket.name}`;
 			} else {
 				presignedPostData.url = customEndpoint;
 			}
