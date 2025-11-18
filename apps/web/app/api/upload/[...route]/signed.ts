@@ -122,7 +122,26 @@ app.post(
 						: "",
 				};
 
-				data = bucket.getPresignedPostUrl(fileKey, { Fields, Expires: 1800 });
+				data = await bucket.getPresignedPostUrl(fileKey, { Fields, Expires: 1800 });
+
+				// Fix URL for GCS and other non-AWS endpoints
+				const { decrypt } = await import("@cap/database/crypto");
+				const endpointToUse = customBucket?.endpoint 
+					? await decrypt(customBucket.endpoint).catch(() => customBucket.endpoint)
+					: serverEnv().CAP_AWS_ENDPOINT;
+				
+				const customEndpoint = endpointToUse;
+				if (customEndpoint && !customEndpoint.includes("amazonaws.com")) {
+					// For GCS and other non-AWS endpoints, always use path-style with bucket name
+					// GCS requires: https://storage.googleapis.com/bucket-name
+					const isGCS = customEndpoint.includes("googleapis.com");
+					
+					if (isGCS || serverEnv().S3_PATH_STYLE || customBucket?.endpoint) {
+						// Remove trailing slash if present
+						const baseUrl = customEndpoint.replace(/\/$/, "");
+						data.url = `${baseUrl}/${bucket.name}`;
+					}
+				}
 			} else if (method === "put") {
 				const presignedUrl = await bucket.getPresignedPutUrl(
 					fileKey,
