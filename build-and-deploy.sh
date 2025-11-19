@@ -23,7 +23,7 @@ echo ""
 
 # Deploy to Cloud Run
 gcloud run deploy cloud-run-service \
-  --image=gcr.io/aviato-cap-dev2/cap-web:latest \
+  --image=australia-southeast1-docker.pkg.dev/aviato-cap-dev2/cap-repo/cap-web:latest \
   --region=australia-southeast1 \
   --project=aviato-cap-dev2 \
   --platform=managed \
