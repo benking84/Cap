@@ -33,7 +33,14 @@ export type Spaces = Omit<
 	videoCount: number;
 };
 
-export type UserPreferences = (typeof users.$inferSelect)["preferences"];
+export type UserPreferences = {
+  notifications?: {
+    email?: boolean;
+    desktop?: boolean;
+  };
+  theme?: "light" | "dark" | "system";
+  language?: string;
+} | null;
 
 export async function getDashboardData(user: typeof userSelectProps) {
 	try {

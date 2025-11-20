@@ -96,9 +96,9 @@ const Links = [
 ];
 
 export const Navbar = () => {
-	const pathname = usePathname();
-	const [showMobileMenu, setShowMobileMenu] = useState(false);
-	const auth = use(useAuthContext().user);
+  const pathname = usePathname();
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const { user: auth } = useAuthContext();
 
 	return (
 		<>
@@ -229,15 +229,15 @@ export const Navbar = () => {
 };
 
 function LoginOrDashboard() {
-	const auth = use(useAuthContext().user);
-	return (
-		<Button
-			variant="dark"
-			href={auth ? "/dashboard" : "/login"}
-			size="sm"
-			className="w-full font-medium sm:w-auto"
-		>
-			{auth ? "Dashboard" : "Login"}
-		</Button>
-	);
+  const { user: auth } = useAuthContext();
+  return (
+    <Button
+      variant="dark"
+      href={auth ? "/dashboard" : "/login"}
+      size="sm"
+      className="w-full font-medium sm:w-auto"
+    >
+      {auth ? "Dashboard" : "Login"}
+    </Button>
+  );
 }

@@ -63,6 +63,7 @@ export const Caps = ({
 	folders: FolderDataType[];
 	dubApiKeyEnabled: boolean;
 }) => {
+	console.log("Caps", data);
 	const router = useRouter();
 	const params = useSearchParams();
 	const page = Number(params.get("page")) || 1;

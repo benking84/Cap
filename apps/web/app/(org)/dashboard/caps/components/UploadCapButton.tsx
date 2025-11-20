@@ -302,6 +302,11 @@ export const UploadCapButton = ({
 
 			await new Promise<void>((resolve, reject) => {
 				const xhr = new XMLHttpRequest();
+				
+				// Log the upload URL for debugging CORS issues
+				console.log("Upload URL:", videoData.presignedPostData.url);
+				console.log("Upload fields:", videoData.presignedPostData.fields);
+				
 				xhr.open("POST", videoData.presignedPostData.url);
 
 				xhr.upload.onprogress = (event) => {
@@ -316,10 +321,15 @@ export const UploadCapButton = ({
 					if (xhr.status >= 200 && xhr.status < 300) {
 						resolve();
 					} else {
+						console.error("Upload failed with status:", xhr.status, xhr.statusText);
+						console.error("Response:", xhr.responseText);
 						reject(new Error(`Upload failed with status ${xhr.status}`));
 					}
 				};
-				xhr.onerror = () => reject(new Error("Upload failed"));
+				xhr.onerror = () => {
+					console.error("Upload error - CORS or network issue");
+					reject(new Error("Upload failed"));
+				};
 
 				xhr.send(formData);
 			});

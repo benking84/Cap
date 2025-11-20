@@ -8,6 +8,7 @@ import {
 	startTransition,
 	use,
 	useCallback,
+	useEffect,
 	useMemo,
 	useOptimistic,
 	useRef,
@@ -75,7 +76,8 @@ const useVideoStatus = (
 		} | null;
 	},
 ) => {
-	return useQuery({
+  const maxPollAttemptsRef = useRef<number>(0);
+  return useQuery({
 		queryKey: ["videoStatus", videoId],
 		queryFn: async (): Promise<VideoStatusResult> => {
 			const res = await getVideoStatus(videoId);
@@ -96,9 +98,24 @@ const useVideoStatus = (
 					chapters: initialData.aiData?.chapters || null,
 				}
 			: undefined,
-		refetchInterval: (query) => {
+    // Disable automatic retry-on-error; suppress noisy logs
+    retry: false,
+    refetchInterval: (query) => {
 			const data = query.state.data;
-			if (!data) return 2000;
+      // Stop polling when tab is hidden
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        return false;
+      }
+      // Cap total number of polls to avoid infinite loops in error states
+      if (maxPollAttemptsRef.current >= 60) {
+        console.log("[useVideoStatus] Stopping polling after 60 attempts");
+        return false;
+      }
+      
+      if (!data) {
+        maxPollAttemptsRef.current += 1;
+        return 2000;
+      }
 
 			const shouldContinuePolling = () => {
 				if (
@@ -114,24 +131,32 @@ const useVideoStatus = (
 
 				if (data.transcriptionStatus === "COMPLETE") {
 					if (!aiGenerationEnabled) {
+						// Stop polling if AI generation is not enabled
 						return false;
 					}
 
-					if (data.aiProcessing) {
+					// Only continue polling if AI is actively processing
+					if (data.aiProcessing === true) {
 						return true;
 					}
 
-					if (!data.summary && !data.chapters) {
-						return true;
-					}
-
+					// If AI processing is false, stop polling even if there's no summary/chapters
+					// This prevents infinite polling when AI generation finished or failed
 					return false;
 				}
 
 				return false;
 			};
 
-			return shouldContinuePolling() ? 2000 : false;
+      const shouldPoll = shouldContinuePolling();
+      // Only increment counter when we actually decide to poll
+      if (shouldPoll) {
+        maxPollAttemptsRef.current += 1;
+        return 2000;
+      }
+      
+      // Stop polling if we shouldn't continue
+      return false;
 		},
 		refetchIntervalInBackground: false,
 		staleTime: 1000,
@@ -163,13 +188,44 @@ export const Share = ({
 		},
 	);
 
-	const { data: videoStatus } = useVideoStatus(data.id, aiGenerationEnabled, {
+    const { data: videoStatus, error: videoStatusError, isLoading: isVideoStatusLoading } = useVideoStatus(data.id as Video.VideoId, aiGenerationEnabled, {
 		transcriptionStatus: data.transcriptionStatus,
 		aiData: initialAiData,
 	});
 
+	// Log status for debugging
+	useEffect(() => {
+		console.log("[Share] Video status:", {
+			videoStatus,
+			videoStatusError,
+			isVideoStatusLoading,
+			transcriptionStatus: data.transcriptionStatus,
+			initialAiData,
+			aiGenerationEnabled,
+			videoStatusTranscription: videoStatus?.transcriptionStatus,
+		});
+	}, [videoStatus, videoStatusError, isVideoStatusLoading, data.transcriptionStatus, initialAiData, aiGenerationEnabled]);
+
 	const transcriptionStatus =
 		videoStatus?.transcriptionStatus || data.transcriptionStatus;
+	
+	// Track when transcription status changes to detect stuck states
+	const transcriptionStuckRef = useRef<{ status: string | null; timestamp: number }>({
+		status: transcriptionStatus,
+		timestamp: Date.now(),
+	});
+	
+	useEffect(() => {
+		const now = Date.now();
+		
+		// Update timestamp when status changes
+		if (transcriptionStuckRef.current.status !== transcriptionStatus) {
+			transcriptionStuckRef.current = {
+				status: transcriptionStatus,
+				timestamp: now,
+			};
+		}
+	}, [transcriptionStatus]);
 
 	const aiData = useMemo(
 		() => ({
@@ -183,34 +239,75 @@ export const Share = ({
 	);
 
 	const shouldShowLoading = () => {
+		// If AI generation is not enabled, never show loading for AI features
 		if (!aiGenerationEnabled) {
+			console.log("[Share] AI generation not enabled, hiding loading");
 			return false;
 		}
 
-		if (!transcriptionStatus || transcriptionStatus === "PROCESSING") {
+		// Check if transcription has been stuck in PROCESSING for too long (2 minutes)
+		const timeSinceLastChange = Date.now() - transcriptionStuckRef.current.timestamp;
+		const STUCK_THRESHOLD = 2 * 60 * 1000; // 2 minutes
+		const isStuck = (transcriptionStatus === "PROCESSING" || !transcriptionStatus) && timeSinceLastChange > STUCK_THRESHOLD;
+		
+		// Show loading while transcription is processing (but not if stuck)
+		if ((!transcriptionStatus || transcriptionStatus === "PROCESSING") && !isStuck) {
+			const timeElapsed = Math.round(timeSinceLastChange / 1000);
+			console.log("[Share] Transcription processing, showing loading", {
+				transcriptionStatus,
+				timeElapsed: timeElapsed + "s",
+			});
 			return true;
 		}
-
-		if (transcriptionStatus === "ERROR") {
+		
+		if (isStuck) {
+			console.warn("[Share] Transcription stuck in PROCESSING for >2 minutes, hiding loading to prevent infinite loading", {
+				transcriptionStatus,
+				timeElapsed: Math.round(timeSinceLastChange / 1000) + "s",
+			});
 			return false;
 		}
 
-		if (transcriptionStatus === "COMPLETE") {
-			// if (aiData.generationError) {
-			// 	return false;
-			// }
-			if (aiData.processing === true) {
-				return true;
-			}
-			if (!aiData.summary && !aiData.chapters) {
-				return true;
-			}
+		// Don't show loading if transcription errored
+		if (transcriptionStatus === "ERROR") {
+			console.log("[Share] Transcription error, hiding loading");
+			return false;
 		}
 
+		// When transcription is complete
+		if (transcriptionStatus === "COMPLETE") {
+			// Show loading only if AI is actively processing
+			if (aiData.processing === true) {
+				console.log("[Share] AI processing, showing loading");
+				return true;
+			}
+			
+			// If AI processing is false, never show loading (even if no summary/chapters)
+			// This handles cases where AI generation finished, failed, or wasn't enabled
+			console.log("[Share] Transcription complete, AI processing false, hiding loading", {
+				hasSummary: !!aiData.summary,
+				hasChapters: !!(aiData.chapters && aiData.chapters.length > 0),
+				processing: aiData.processing,
+			});
+			return false;
+		}
+
+		console.log("[Share] Default case, hiding loading");
 		return false;
 	};
 
 	const aiLoading = shouldShowLoading();
+	
+	// Debug logging
+	useEffect(() => {
+		console.log("[Share] Loading state:", {
+			aiLoading,
+			transcriptionStatus,
+			aiData,
+			aiGenerationEnabled,
+			videoStatus,
+		});
+	}, [aiLoading, transcriptionStatus, aiData, aiGenerationEnabled, videoStatus]);
 
 	const handleSeek = (time: number) => {
 		if (playerRef.current) {

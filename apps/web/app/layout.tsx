@@ -71,69 +71,67 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
+
 export default async function RootLayout({ children }: PropsWithChildren) {
 	const bootstrapData = await getBootstrapData();
 	const userPromise = getCurrentUser();
 
-	return (
-		<html className={defaultFont.className} lang="en">
-			<head>
-				<link
-					rel="apple-touch-icon"
-					sizes="180x180"
-					href="/apple-touch-icon.png"
-				/>
-				<link
-					rel="icon"
-					type="image/png"
-					sizes="32x32"
-					href="/favicon-32x32.png"
-				/>
-				<link
-					rel="icon"
-					type="image/png"
-					sizes="16x16"
-					href="/favicon-16x16.png"
-				/>
-				<link rel="manifest" href="/site.webmanifest" />
-				<link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5bbad5" />
-				<link rel="shortcut icon" href="/favicon.ico" />
-				<meta name="msapplication-TileColor" content="#da532c" />
-				<meta name="theme-color" content="#ffffff" />
-			</head>
-			<body suppressHydrationWarning>
-				<script
-					dangerouslySetInnerHTML={{ __html: `(${script.toString()})()` }}
-				/>
-				<TooltipPrimitive.Provider>
-					<PostHogProvider bootstrapData={bootstrapData}>
-						<AuthContextProvider user={userPromise}>
-							<SessionProvider>
-								<PublicEnvContext
-									value={{
-										webUrl: buildEnv.NEXT_PUBLIC_WEB_URL,
-										awsBucket: buildEnv.NEXT_PUBLIC_CAP_AWS_BUCKET,
-										s3BucketUrl: S3_BUCKET_URL,
-									}}
-								>
-									<ReactQueryProvider>
-										<SonnerToaster />
-										<main className="w-full">{children}</main>
-										<PosthogIdentify />
-									</ReactQueryProvider>
-								</PublicEnvContext>
-							</SessionProvider>
-						</AuthContextProvider>
-					</PostHogProvider>
-				</TooltipPrimitive.Provider>
-				{buildEnv.NEXT_PUBLIC_IS_CAP && (
-					<DubAnalytics
-						domainsConfig={{
-							refer: "go.cap.so",
-						}}
-					/>
-				)}
-			</body>
-		</html>
-	);
+  return (
+    <html className={defaultFont.className} lang="en">
+      <head>
+        <link
+          rel="apple-touch-icon"
+          sizes="180x180"
+          href="/apple-touch-icon.png"
+        />
+        <link
+          rel="icon"
+          type="image/png"
+          sizes="32x32"
+          href="/favicon-32x32.png"
+        />
+        <link
+          rel="icon"
+          type="image/png"
+          sizes="16x16"
+          href="/favicon-16x16.png"
+        />
+        {/** Temporarily removed to avoid repeated manifest fetches during navigation */}
+        <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5bbad5" />
+        <link rel="shortcut icon" href="/favicon.ico" />
+        <meta name="msapplication-TileColor" content="#da532c" />
+        <meta name="theme-color" content="#ffffff" />
+      </head>
+      <body suppressHydrationWarning>
+        <AuthContextProvider>
+          <ReactQueryProvider>
+            <script
+              dangerouslySetInnerHTML={{ __html: `(${script.toString()})()` }}
+            />
+            <TooltipPrimitive.Provider>
+              {/* <PostHogProvider bootstrapData={bootstrapData}> */}
+                <PublicEnvContext
+                  value={{
+                    webUrl: process.env.NEXT_PUBLIC_WEB_URL || '',
+                    awsBucket: process.env.NEXT_PUBLIC_AWS_BUCKET || '',
+                    s3BucketUrl: process.env.NEXT_PUBLIC_S3_BUCKET_URL || ''
+                  }}
+                >
+                  {children}
+                {buildEnv.NEXT_PUBLIC_IS_CAP && (
+                  <DubAnalytics
+                    domainsConfig={{
+                      refer: "go.cap.so",
+                    }}
+                  />
+                )}
+                <SonnerToaster />
+              </PublicEnvContext>
+            {/* </PostHogProvider> */}
+          </TooltipPrimitive.Provider>
+          </ReactQueryProvider>
+        </AuthContextProvider>
+      </body>
+    </html>
+  );
 }

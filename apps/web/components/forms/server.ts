@@ -12,9 +12,10 @@ import { serverEnv } from "@cap/env";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { createBucketProvider } from "@/utils/s3";
+import { getFirebaseUser } from "@cap/database/auth/firebase-session";
 
 export async function createOrganization(formData: FormData) {
-	const user = await getCurrentUser();
+	 const user = await getFirebaseUser();
 	if (!user) throw new Error("Unauthorized");
 
 	// Extract the name from the FormData
@@ -59,37 +60,73 @@ export async function createOrganization(formData: FormData) {
 			throw new Error("File size must be less than 2MB");
 		}
 
-		// Create a unique file key
-		const fileExtension = iconFile.name.split(".").pop();
-		const fileKey = `organizations/${organizationId}/icon-${Date.now()}.${fileExtension}`;
-
 		try {
+			// Create a unique file key
+			const fileExtension = iconFile.name.split(".").pop();
+			const fileKey = `organizations/${organizationId}/icon-${Date.now()}.${fileExtension}`;
+
+			console.log('Creating bucket provider...');
 			const bucket = await createBucketProvider();
 
-			await bucket.putObject(fileKey, await iconFile.bytes(), {
+			console.log('Bucket provider created:', { 
+				bucketName: bucket.name,
+				fileKey,
+				fileType: iconFile.type,
+				env: {
+					CAP_AWS_BUCKET: serverEnv().CAP_AWS_BUCKET,
+					CAP_AWS_ENDPOINT: serverEnv().CAP_AWS_ENDPOINT,
+					CAP_AWS_REGION: serverEnv().CAP_AWS_REGION
+				}
+			});
+
+			const fileBytes = await iconFile.bytes();
+			const bucketName = bucket.name;
+			
+			if (!bucketName) {
+				throw new Error('Bucket name is not defined');
+			}
+
+			console.log(`Uploading file (${fileBytes.length} bytes) to bucket ${bucketName} with key ${fileKey}`);
+
+			await bucket.putObject(fileKey, fileBytes, {
 				contentType: iconFile.type,
 			});
 
-			// Construct the icon URL
+			console.log('File uploaded successfully');
+
 			let iconUrl;
-			if (serverEnv().CAP_AWS_BUCKET_URL) {
-				// If a custom bucket URL is defined, use it
-				iconUrl = `${serverEnv().CAP_AWS_BUCKET_URL}/${fileKey}`;
-			} else if (serverEnv().CAP_AWS_ENDPOINT) {
-				// For custom endpoints like MinIO
-				iconUrl = `${serverEnv().CAP_AWS_ENDPOINT}/${bucket.name}/${fileKey}`;
+			const awsEndpoint = serverEnv().CAP_AWS_ENDPOINT;
+			const bucketUrl = serverEnv().CAP_AWS_BUCKET_URL;
+
+			if (bucketUrl) {
+				iconUrl = `${bucketUrl}/${fileKey}`;
+			} else if (awsEndpoint) {
+				// For GCS, the URL format is different
+				if (awsEndpoint.includes('googleapis.com')) {
+					iconUrl = `https://storage.googleapis.com/${bucketName}/${fileKey}`;
+				} else {
+					iconUrl = `${awsEndpoint}/${bucketName}/${fileKey}`;
+				}
 			} else {
-				// Default AWS S3 URL format
-				iconUrl = `https://${bucket.name}.s3.${
-					serverEnv().CAP_AWS_REGION || "us-east-1"
-				}.amazonaws.com/${fileKey}`;
+				const region = serverEnv().CAP_AWS_REGION || 'us-east-1';
+				iconUrl = `https://${bucketName}.s3.${region}.amazonaws.com/${fileKey}`;
 			}
 
+			console.log('Generated icon URL:', { iconUrl });
 			// Add the icon URL to the organization values
 			orgValues.iconUrl = iconUrl;
 		} catch (error) {
-			console.error("Error uploading organization icon:", error);
-			throw new Error(error instanceof Error ? error.message : "Upload failed");
+			console.error("Error uploading organization icon:", {
+				error: error instanceof Error ? error.message : 'Unknown error',
+				stack: error instanceof Error ? error.stack : undefined,
+				env: {
+					CAP_AWS_BUCKET: serverEnv().CAP_AWS_BUCKET,
+					CAP_AWS_ENDPOINT: serverEnv().CAP_AWS_ENDPOINT,
+					CAP_AWS_REGION: serverEnv().CAP_AWS_REGION,
+					S3_PATH_STYLE: serverEnv().S3_PATH_STYLE
+				}
+			});
+			throw new Error(error instanceof Error ? error.message : "Failed to upload organization icon");
 		}
 	}
 

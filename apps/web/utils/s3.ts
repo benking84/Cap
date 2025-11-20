@@ -64,19 +64,57 @@ async function tryDecrypt(
 }
 
 export async function getS3Config(config?: S3Config, internal = false) {
-	if (!config) {
-		return {
-			endpoint: internal
-				? (serverEnv().S3_INTERNAL_ENDPOINT ?? serverEnv().CAP_AWS_ENDPOINT)
-				: (serverEnv().S3_PUBLIC_ENDPOINT ?? serverEnv().CAP_AWS_ENDPOINT),
-			region: serverEnv().CAP_AWS_REGION,
-			credentials: {
-				accessKeyId: serverEnv().CAP_AWS_ACCESS_KEY ?? "",
-				secretAccessKey: serverEnv().CAP_AWS_SECRET_KEY ?? "",
-			},
-			forcePathStyle: serverEnv().S3_PATH_STYLE,
-		};
-	}
+    // Log all relevant environment variables (masking sensitive values)
+    console.log('[S3] Environment Configuration:', {
+        NODE_ENV: process.env.NODE_ENV,
+        CAP_AWS_REGION: serverEnv().CAP_AWS_REGION,
+        CAP_AWS_ENDPOINT: serverEnv().CAP_AWS_ENDPOINT,
+        S3_INTERNAL_ENDPOINT: serverEnv().S3_INTERNAL_ENDPOINT,
+        S3_PUBLIC_ENDPOINT: serverEnv().S3_PUBLIC_ENDPOINT,
+        S3_PATH_STYLE: serverEnv().S3_PATH_STYLE,
+        hasAccessKey: !!(serverEnv().CAP_AWS_ACCESS_KEY),
+        hasSecretKey: !!(serverEnv().CAP_AWS_SECRET_KEY),
+		assessKey: serverEnv().CAP_AWS_ACCESS_KEY,
+        secretKey: serverEnv().CAP_AWS_SECRET_KEY,
+        usingConfig: !!config,
+        internalCall: internal
+    });
+
+    const isGCS = serverEnv().CAP_AWS_ENDPOINT?.includes('googleapis.com');
+
+    if (!config) {
+        const endpoint = internal
+            ? (serverEnv().S3_INTERNAL_ENDPOINT ?? serverEnv().CAP_AWS_ENDPOINT)
+            : (serverEnv().S3_PUBLIC_ENDPOINT ?? serverEnv().CAP_AWS_ENDPOINT);
+
+        const s3Config: any = {
+            endpoint,
+            region: serverEnv().CAP_AWS_REGION || 'us-central1',
+            credentials: {
+                accessKeyId: serverEnv().CAP_AWS_ACCESS_KEY ?? '',
+                secretAccessKey: serverEnv().CAP_AWS_SECRET_KEY ?? '',
+            },
+            forcePathStyle: serverEnv().S3_PATH_STYLE ?? false,
+        };
+
+        // GCS specific configuration
+        if (isGCS) {
+            s3Config.region = 'auto';  // GCS uses 'auto' region for S3 compatibility
+            s3Config.signingRegion = serverEnv().CAP_AWS_REGION || 'us-central1';
+            s3Config.signatureVersion = 'v4';
+            s3Config.forcePathStyle = false;
+        }
+
+        console.log('[S3] Using default config:', {
+            endpoint: s3Config.endpoint,
+            region: s3Config.region,
+            forcePathStyle: s3Config.forcePathStyle,
+            isGCS,
+            hasCredentials: !!(s3Config.credentials.accessKeyId && s3Config.credentials.secretAccessKey)
+        });
+
+        return s3Config;
+    }
 
 	const endpoint = config.endpoint
 		? await tryDecrypt(config.endpoint)
@@ -127,18 +165,43 @@ export async function getS3Bucket(
 }
 
 export async function createS3Client(config?: S3Config, internal = false) {
-	const s3Config = await getS3Config(config, internal);
-	const isLocalOrMinio =
-		s3Config.endpoint?.includes("localhost") ||
-		s3Config.endpoint?.includes("127.0.0.1");
+    const startTime = Date.now();
+    
+    try {
+        const s3Config = await getS3Config(config, internal);
+        const isLocalOrMinio =
+            s3Config.endpoint?.includes("localhost") ||
+            s3Config.endpoint?.includes("127.0.0.1");
 
-	return [
-		new S3Client({
-			...s3Config,
-			maxAttempts: isLocalOrMinio ? 5 : 3,
-		}),
-		s3Config,
-	] as const;
+        const clientConfig = {
+            ...s3Config,
+            maxAttempts: isLocalOrMinio ? 5 : 3,
+        };
+
+        console.log('[S3] Creating S3 client with config:', {
+            endpoint: clientConfig.endpoint,
+            region: clientConfig.region,
+            maxAttempts: clientConfig.maxAttempts,
+            forcePathStyle: clientConfig.forcePathStyle,
+            hasCredentials: !!(clientConfig.credentials?.accessKeyId && clientConfig.credentials?.secretAccessKey),
+            isLocalOrMinio
+        });
+
+        const client = new S3Client(clientConfig);
+        
+        console.log(`[S3] S3 client created in ${Date.now() - startTime}ms`);
+        
+        return [client, s3Config] as const;
+    } catch (error) {
+        console.error('[S3] Error creating S3 client:', {
+            error: error instanceof Error ? error.message : 'Unknown error',
+            stack: error instanceof Error ? error.stack : undefined,
+            configType: config ? 'custom' : 'default',
+            internal,
+            duration: Date.now() - startTime
+        });
+        throw error;
+    }
 }
 
 interface S3BucketProvider {
@@ -373,6 +436,7 @@ export async function createBucketProvider(
 	customBucket?: InferSelectModel<typeof s3Buckets> | null,
 ) {
 	const bucket = await getS3Bucket(customBucket);
+	console.log({ bucket });
 	const getClient = (internal: boolean) =>
 		createS3Client(customBucket, internal).then((v) => v[0]);
 

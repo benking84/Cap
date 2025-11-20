@@ -16,6 +16,8 @@ import { useClickAway } from "@uidotdev/usehooks";
 import clsx from "clsx";
 import { AnimatePresence } from "framer-motion";
 import { MoreVertical } from "lucide-react";
+import { signOut as firebaseSignOut } from "firebase/auth";
+import { auth } from "@/lib/firebase/config";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -194,66 +196,74 @@ const User = () => {
 	const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
 	const { user, isSubscribed } = useDashboardContext();
 
-	const menuItems = useMemo(
-		() => [
-			{
-				name: "Homepage",
-				icon: <HomeIcon />,
-				href: "/home",
-				onClick: () => setMenuOpen(false),
-				iconClassName: "text-gray-11 group-hover:text-gray-12",
-				showCondition: true,
-			},
-			{
-				name: "Upgrade to Pro",
-				icon: <ArrowUpIcon />,
-				onClick: () => {
-					setMenuOpen(false);
-					setUpgradeModalOpen(true);
-				},
-				iconClassName: "text-amber-400 group-hover:text-amber-500",
-				showCondition: !isSubscribed && buildEnv.NEXT_PUBLIC_IS_CAP,
-			},
-			{
-				name: "Earn 40% Referral",
-				icon: <ReferIcon />,
-				href: "/dashboard/refer",
-				onClick: () => setMenuOpen(false),
-				iconClassName: "text-gray-11 group-hover:text-gray-12",
-				showCondition: buildEnv.NEXT_PUBLIC_IS_CAP,
-			},
-			{
-				name: "Settings",
-				icon: <SettingsGearIcon />,
-				href: "/dashboard/settings/account",
-				onClick: () => setMenuOpen(false),
-				iconClassName: "text-gray-11 group-hover:text-gray-12",
-				showCondition: true,
-			},
-			{
-				name: "Chat Support",
-				icon: <MessageCircleMoreIcon />,
-				onClick: () => window.open("https://cap.link/discord", "_blank"),
-				iconClassName: "text-gray-11 group-hover:text-gray-12",
-				showCondition: true,
-			},
-			{
-				name: "Download App",
-				icon: <DownloadIcon />,
-				onClick: () => window.open("https://cap.so/download", "_blank"),
-				iconClassName: "text-gray-11 group-hover:text-gray-12",
-				showCondition: true,
-			},
-			{
-				name: "Sign Out",
-				icon: <LogoutIcon />,
-				onClick: () => signOut(),
-				iconClassName: "text-gray-11 group-hover:text-gray-12",
-				showCondition: true,
-			},
-		],
-		[],
-	);
+  const menuItems = useMemo(
+    () => [
+      {
+        name: "Homepage",
+        icon: <HomeIcon />,
+        href: "/home",
+        onClick: () => setMenuOpen(false),
+        iconClassName: "text-gray-11 group-hover:text-gray-12",
+        showCondition: true,
+      },
+      {
+        name: "Upgrade to Pro",
+        icon: <ArrowUpIcon />,
+        onClick: () => {
+          setMenuOpen(false);
+          setUpgradeModalOpen(true);
+        },
+        iconClassName: "text-amber-400 group-hover:text-amber-500",
+        showCondition: !isSubscribed && buildEnv.NEXT_PUBLIC_IS_CAP,
+      },
+      {
+        name: "Earn 40% Referral",
+        icon: <ReferIcon />,
+        href: "/dashboard/refer",
+        onClick: () => setMenuOpen(false),
+        iconClassName: "text-gray-11 group-hover:text-gray-12",
+        showCondition: buildEnv.NEXT_PUBLIC_IS_CAP,
+      },
+      {
+        name: "Settings",
+        icon: <SettingsGearIcon />,
+        href: "/dashboard/settings/account",
+        onClick: () => setMenuOpen(false),
+        iconClassName: "text-gray-11 group-hover:text-gray-12",
+        showCondition: true,
+      },
+      {
+        name: "Chat Support",
+        icon: <MessageCircleMoreIcon />,
+        onClick: () => window.open("https://cap.link/discord", "_blank"),
+        iconClassName: "text-gray-11 group-hover:text-gray-12",
+        showCondition: true,
+      },
+      {
+        name: "Download App",
+        icon: <DownloadIcon />,
+        onClick: () => window.open("https://cap.so/download", "_blank"),
+        iconClassName: "text-gray-11 group-hover:text-gray-12",
+        showCondition: true,
+      },
+      {
+        name: "Sign Out",
+        icon: <LogoutIcon />,
+        onClick: async () => {
+          try {
+            await firebaseSignOut(auth);
+            await fetch('/api/auth/logout', { method: 'POST' });
+            window.location.href = '/login';
+          } catch (error) {
+            console.error('Sign out error:', error);
+          }
+        },
+        iconClassName: "text-gray-11 group-hover:text-gray-12",
+        showCondition: true,
+      },
+    ],
+    []
+  );
 
 	return (
 		<>

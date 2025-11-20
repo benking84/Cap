@@ -26,7 +26,19 @@ ARG NEXT_PUBLIC_DOCKER_BUILD=true
 ENV NEXT_PUBLIC_DOCKER_BUILD=$NEXT_PUBLIC_DOCKER_BUILD
 ENV NEXT_PUBLIC_WEB_URL=http://localhost:3000
 ENV NEXT_PUBLIC_CAP_AWS_BUCKET=capso
-ENV NEXT_PUBLIC_CAP_AWS_REGION=us-east-1
+ENV NEXT_PUBLIC_CAP_AWS_REGION=australia-southeast1
+# Add required environment variables for build
+ENV S3_PUBLIC_ENDPOINT=https://storage.googleapis.com
+ENV CAP_AWS_ENDPOINT=https://storage.googleapis.com
+ENV CAP_AWS_REGION=australia-southeast1
+ENV CAP_AWS_BUCKET=placeholder-bucket
+ENV DATABASE_URL=mysql://placeholder:placeholder@localhost/placeholder
+ENV WEB_URL=http://localhost:3000
+ENV NEXTAUTH_SECRET=placeholder-secret-for-build
+ENV NEXTAUTH_URL=http://localhost:3000
+ENV CAP_AWS_ACCESS_KEY=placeholder
+ENV CAP_AWS_SECRET_KEY=placeholder
+ENV NODE_ENV=production
 
 RUN pnpm run -w build:web
 
@@ -45,6 +57,11 @@ COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
 # If your runtime needs migrations at container start, keep this:
 COPY --from=builder --chown=nextjs:nodejs /app/packages/database/migrations ./apps/web/migrations
 
+# Copy entrypoint script
+COPY --chown=nextjs:nodejs docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 USER nextjs
 EXPOSE 3000
-CMD HOSTNAME="0.0.0.0" node apps/web/server.js
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+CMD ["sh", "-c", "HOSTNAME=0.0.0.0 node apps/web/server.js"]
