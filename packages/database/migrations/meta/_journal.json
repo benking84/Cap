@@ -54,15 +54,8 @@
 		{
 			"idx": 7,
 			"version": "5",
-			"when": 1762428551824,
-			"tag": "0007_public_toxin",
-			"breakpoints": true
-		},
-		{
-			"idx": 8,
-			"version": "5",
-			"when": 1762428905323,
-			"tag": "0008_fat_ender_wiggin",
+			"when": 1734567890000,
+			"tag": "0008_add_users_preferences",
 			"breakpoints": true
 		}
 	]

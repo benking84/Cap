@@ -12,11 +12,10 @@ import { migrateDb } from "@cap/database/migrate";
 import { buildEnv, serverEnv } from "@cap/env";
 
 export async function register() {
-	if (process.env.NEXT_PUBLIC_IS_CAP) return;
+	console.log("⏳ Waiting 30 seconds to run migrations (allowing Cloud SQL Proxy to initialize)");
 
-	console.log("Waiting 5 seconds to run migrations");
 	// Function to trigger migrations with retry logic
-	const triggerMigrations = async (retryCount = 0, maxRetries = 3) => {
+	const triggerMigrations = async (retryCount = 0, maxRetries = 5) => {
 		try {
 			await runMigrations();
 		} catch (error) {
@@ -25,19 +24,25 @@ export async function register() {
 				error,
 			);
 			if (retryCount < maxRetries - 1) {
+				const waitTime = Math.min(15000 * (retryCount + 1), 60000); // Exponential backoff up to 60s
 				console.log(
-					`🔄 Retrying in 5 seconds... (${retryCount + 1}/${maxRetries})`,
+					`🔄 Retrying in ${waitTime / 1000} seconds... (${retryCount + 1}/${maxRetries})`,
 				);
-				setTimeout(() => triggerMigrations(retryCount + 1, maxRetries), 5000);
+				setTimeout(() => triggerMigrations(retryCount + 1, maxRetries), waitTime);
 			} else {
 				console.error(`🚨 All ${maxRetries} migration attempts failed.`);
-				process.exit(1); // Exit with error code if all attempts fail
+				console.error(`💡 Check Cloud SQL connectivity and VPC configuration`);
+				console.error(`⚠️  Service will continue running, but migrations may need to be run manually.`);
+				// DO NOT exit - let the service continue running
 			}
 		}
 	};
-	// Add a timeout to trigger migrations after 5 seconds on server start
-	setTimeout(() => triggerMigrations(), 5000);
-	setTimeout(() => createS3Bucket(), 5000);
+
+	// Add a timeout to trigger migrations after 30 seconds on server start
+	// This gives Cloud SQL Proxy more time to establish connection
+	setTimeout(() => triggerMigrations(), 30000);
+
+	setTimeout(() => createS3Bucket(), 30000);
 }
 
 async function createS3Bucket() {

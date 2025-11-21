@@ -34,6 +34,7 @@ import {
 	Cause,
 	Config,
 	Effect,
+	Either,
 	Exit,
 	Layer,
 	ManagedRuntime,
@@ -145,8 +146,20 @@ export const runPromise = <A, E>(
 		effect.pipe(Effect.provide(CookiePasswordAttachmentLive)),
 	).then((res) => {
 		if (Exit.isFailure(res)) {
-			if (Cause.isDieType(res.cause)) throw res.cause.defect;
-			throw res;
+			if (Cause.isDieType(res.cause)) {
+				const defect = res.cause.defect;
+				if (defect instanceof Error) throw defect;
+				throw new Error(String(defect));
+			}
+			const error = Either.match(Cause.failureOrCause(res.cause), {
+				onLeft: (err) => err,
+				onRight: (cause) => {
+					const message = Cause.pretty(cause);
+					return new Error(message);
+				},
+			});
+			if (error instanceof Error) throw error;
+			throw new Error(String(error));
 		}
 
 		return res.value;

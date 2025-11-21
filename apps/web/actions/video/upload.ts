@@ -21,6 +21,7 @@ import { eq } from "drizzle-orm";
 import { Effect, Option } from "effect";
 import { revalidatePath } from "next/cache";
 import { runPromise } from "@/lib/server";
+import { createBucketProvider } from "@/utils/s3";
 
 const MAX_S3_DELETE_ATTEMPTS = 3;
 const S3_DELETE_RETRY_BACKOFF_MS = 250;
@@ -52,11 +53,11 @@ async function getVideoUploadPresignedUrl({
 
 		const s3Config = customBucket
 			? {
-					endpoint: customBucket.endpoint || undefined,
-					region: customBucket.region,
-					accessKeyId: customBucket.accessKeyId,
-					secretAccessKey: customBucket.secretAccessKey,
-				}
+				endpoint: customBucket.endpoint || undefined,
+				region: customBucket.region,
+				accessKeyId: customBucket.accessKeyId,
+				secretAccessKey: customBucket.secretAccessKey,
+			}
 			: null;
 
 		if (
@@ -94,6 +95,8 @@ async function getVideoUploadPresignedUrl({
 			}
 		}
 
+		const bucket = await createBucketProvider(customBucket);
+
 		const contentType = fileKey.endsWith(".aac")
 			? "audio/aac"
 			: fileKey.endsWith(".webm")
@@ -115,16 +118,46 @@ async function getVideoUploadPresignedUrl({
 			"x-amz-meta-audiocodec": audioCodec ?? "",
 		};
 
-		const presignedPostData = await Effect.gen(function* () {
-			const [bucket] = yield* S3Buckets.getBucketAccess(
-				Option.fromNullable(customBucket?.id),
-			);
+		const presignedPostData = await bucket.getPresignedPostUrl(fileKey, {
+			Fields,
+			Expires: 1800,
+		});
 
-			return yield* bucket.getPresignedPostUrl(fileKey, {
-				Fields,
-				Expires: 1800,
-			});
-		}).pipe(runPromise);
+		// Use custom bucket endpoint if available, otherwise fall back to server env endpoint
+		const { decrypt } = await import("@cap/database/crypto");
+		const endpointToUse = customBucket?.endpoint
+			? await decrypt(customBucket.endpoint).catch(() => customBucket.endpoint)
+			: serverEnv().S3_PUBLIC_ENDPOINT;
+
+		const customEndpoint = endpointToUse;
+		if (customEndpoint && !customEndpoint.includes("amazonaws.com")) {
+			// For GCS and other non-AWS endpoints, always use path-style with bucket name
+			// GCS requires: https://storage.googleapis.com/bucket-name
+			const isGCS = customEndpoint.includes("googleapis.com");
+
+			if (isGCS || serverEnv().S3_PATH_STYLE || customBucket?.endpoint) {
+				// Remove trailing slash if present
+				const baseUrl = customEndpoint.replace(/\/$/, "");
+				presignedPostData.url = `${baseUrl}/${bucket.name}`;
+			} else {
+				presignedPostData.url = customEndpoint;
+			}
+		}
+
+		const videoId = fileKey.split("/")[1];
+		if (videoId) {
+			try {
+				await fetch(`${serverEnv().WEB_URL}/api/revalidate`, {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({ videoId }),
+				});
+			} catch (revalidateError) {
+				console.error("Failed to revalidate page:", revalidateError);
+			}
+		}
 
 		return { presignedPostData };
 	} catch (error) {
@@ -184,9 +217,8 @@ export async function createVideoAndGetUploadUrl({
 				.where(eq(videos.id, videoId));
 
 			if (existingVideo) {
-				const fileKey = `${user.id}/${videoId}/${
-					isScreenshot ? "screenshot/screen-capture.jpg" : "result.mp4"
-				}`;
+				const fileKey = `${user.id}/${videoId}/${isScreenshot ? "screenshot/screen-capture.jpg" : "result.mp4"
+					}`;
 				const { presignedPostData } = await getVideoUploadPresignedUrl({
 					fileKey,
 					duration: duration?.toString(),
@@ -206,9 +238,8 @@ export async function createVideoAndGetUploadUrl({
 
 		const videoData = {
 			id: idToUse,
-			name: `Cap ${
-				isScreenshot ? "Screenshot" : isUpload ? "Upload" : "Recording"
-			} - ${formattedDate}`,
+			name: `Cap ${isScreenshot ? "Screenshot" : isUpload ? "Upload" : "Recording"
+				} - ${formattedDate}`,
 			ownerId: user.id,
 			orgId,
 			source: { type: "webMP4" as const },
@@ -225,9 +256,8 @@ export async function createVideoAndGetUploadUrl({
 				videoId: idToUse,
 			});
 
-		const fileKey = `${user.id}/${idToUse}/${
-			isScreenshot ? "screenshot/screen-capture.jpg" : "result.mp4"
-		}`;
+		const fileKey = `${user.id}/${idToUse}/${isScreenshot ? "screenshot/screen-capture.jpg" : "result.mp4"
+			}`;
 		const { presignedPostData } = await getVideoUploadPresignedUrl({
 			fileKey,
 			duration: duration?.toString(),

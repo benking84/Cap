@@ -324,11 +324,30 @@ const AdminNavItems = ({ toggleMobileNav }: Props) => {
 					<SpacesList toggleMobileNav={() => toggleMobileNav?.()} />
 				</div>
 				<div className="pb-4 mt-auto w-full">
+					{/* <AnimatePresence>
+						{!sidebarCollapsed && (
+							<motion.div
+								initial={{ scale: 0 }}
+								animate={{ scale: 1 }}
+								exit={{ scale: 0 }}
+								transition={{
+									type: "spring",
+									bounce: 0.2,
+									duration: 0.2,
+								}}
+							>
+								<CapAIBox
+									openAIDialog={openAIDialog}
+									setOpenAIDialog={setOpenAIDialog}
+								/>
+							</motion.div>
+						)}
+					</AnimatePresence>
 					<UsageButton
 						toggleMobileNav={() => toggleMobileNav?.()}
-						subscribed={user.isPro}
-					/>
-					{buildEnv.NEXT_PUBLIC_IS_CAP && (
+						subscribed={userIsSubscribed}
+					/> */}
+					{/* {buildEnv.NEXT_PUBLIC_IS_CAP && (
 						<div className="flex justify-center items-center mt-2">
 							<Link
 								href="/dashboard/refer"
@@ -340,7 +359,7 @@ const AdminNavItems = ({ toggleMobileNav }: Props) => {
 					)}
 					<p className="mt-2 text-xs text-center truncate text-gray-10">
 						Cap Software, Inc. {new Date().getFullYear()}.
-					</p>
+					</p> */}
 				</div>
 			</nav>
 			<DialogContent className="p-0 w-full max-w-md rounded-xl bg-gray-2">

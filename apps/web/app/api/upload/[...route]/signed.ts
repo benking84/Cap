@@ -2,24 +2,15 @@ import {
 	CloudFrontClient,
 	CreateInvalidationCommand,
 } from "@aws-sdk/client-cloudfront";
-import type { PresignedPost } from "@aws-sdk/s3-presigned-post";
 import { db, updateIfDefined } from "@cap/database";
-import * as Db from "@cap/database/schema";
+import { s3Buckets, videos } from "@cap/database/schema";
+import type { VideoMetadata } from "@cap/database/types";
 import { serverEnv } from "@cap/env";
-import { AwsCredentials, S3Buckets } from "@cap/web-backend";
-import { Video } from "@cap/web-domain";
 import { zValidator } from "@hono/zod-validator";
-import { and, eq } from "drizzle-orm";
-import { Effect, Option } from "effect";
+import { and, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-
-import { runPromise } from "@/lib/server";
-import {
-	isAtLeastSemver,
-	isFromDesktopSemver,
-	UPLOAD_PROGRESS_VERSION,
-} from "@/utils/desktop";
+import { createBucketProvider } from "@/utils/s3";
 import { stringOrNumberOptional } from "@/utils/zod";
 import { withAuth } from "../../utils";
 import { parseVideoIdOrFileKey } from "../utils";
@@ -56,8 +47,8 @@ app.post(
 		try {
 			const [customBucket] = await db()
 				.select()
-				.from(Db.s3Buckets)
-				.where(eq(Db.s3Buckets.ownerId, user.id));
+				.from(s3Buckets)
+				.where(eq(s3Buckets.ownerId, user.id));
 
 			const s3Config = customBucket
 				? {
@@ -79,9 +70,10 @@ app.post(
 
 					const cloudfront = new CloudFrontClient({
 						region: serverEnv().CAP_AWS_REGION || "us-east-1",
-						credentials: await runPromise(
-							Effect.map(AwsCredentials, (c) => c.credentials),
-						),
+						credentials: {
+							accessKeyId: serverEnv().CAP_AWS_ACCESS_KEY || "",
+							secretAccessKey: serverEnv().CAP_AWS_SECRET_KEY || "",
+						},
 					});
 
 					const pathToInvalidate = "/" + fileKey;
@@ -118,42 +110,53 @@ app.post(
 								? "application/x-mpegURL"
 								: "video/mp2t";
 
-			let data: PresignedPost;
+			const bucket = await createBucketProvider(customBucket);
 
-			await Effect.gen(function* () {
-				const [bucket] = yield* S3Buckets.getBucketAccess(
-					Option.fromNullable(customBucket?.id),
+			let data;
+			if (method === "post") {
+				const Fields = {
+					"Content-Type": contentType,
+					"x-amz-meta-userid": user.id,
+					"x-amz-meta-duration": durationInSecs
+						? durationInSecs.toString()
+						: "",
+				};
+
+				data = await bucket.getPresignedPostUrl(fileKey, { Fields, Expires: 1800 });
+
+				// Fix URL for GCS and other non-AWS endpoints
+				const { decrypt } = await import("@cap/database/crypto");
+				const endpointToUse = customBucket?.endpoint 
+					? await decrypt(customBucket.endpoint).catch(() => customBucket.endpoint)
+					: serverEnv().S3_PUBLIC_ENDPOINT;
+				
+				const customEndpoint = endpointToUse;
+				if (customEndpoint && !customEndpoint.includes("amazonaws.com")) {
+					// For GCS and other non-AWS endpoints, always use path-style with bucket name
+					// GCS requires: https://storage.googleapis.com/bucket-name
+					const isGCS = customEndpoint.includes("googleapis.com");
+					
+					if (isGCS || serverEnv().S3_PATH_STYLE || customBucket?.endpoint) {
+						// Remove trailing slash if present
+						const baseUrl = customEndpoint.replace(/\/$/, "");
+						data.url = `${baseUrl}/${bucket.name}`;
+					}
+				}
+			} else if (method === "put") {
+				const presignedUrl = await bucket.getPresignedPutUrl(
+					fileKey,
+					{
+						ContentType: contentType,
+						Metadata: {
+							userid: user.id,
+							duration: durationInSecs ? durationInSecs.toString() : "",
+						},
+					},
+					{ expiresIn: 1800 },
 				);
 
-				if (method === "post") {
-					const Fields = {
-						"Content-Type": contentType,
-						"x-amz-meta-userid": user.id,
-						"x-amz-meta-duration": durationInSecs
-							? durationInSecs.toString()
-							: "",
-					};
-
-					data = yield* bucket.getPresignedPostUrl(fileKey, {
-						Fields,
-						Expires: 1800,
-					});
-				} else if (method === "put") {
-					const presignedUrl = yield* bucket.getPresignedPutUrl(
-						fileKey,
-						{
-							ContentType: contentType,
-							Metadata: {
-								userid: user.id,
-								duration: durationInSecs ? durationInSecs.toString() : "",
-							},
-						},
-						{ expiresIn: 1800 },
-					);
-
-					data = { url: presignedUrl, fields: {} };
-				}
-			}).pipe(runPromise);
+				data = { url: presignedUrl, fields: {} };
+			}
 
 			console.log("Presigned URL created successfully");
 
@@ -161,34 +164,33 @@ app.post(
 			const videoIdFromKey = fileKey.split("/")[1]; // Assuming fileKey format is userId/videoId/...
 
 			const videoIdToUse = "videoId" in body ? body.videoId : videoIdFromKey;
-			if (videoIdToUse) {
-				const videoId = Video.VideoId.make(videoIdToUse);
+			if (videoIdToUse)
 				await db()
-					.update(Db.videos)
+					.update(videos)
 					.set({
-						duration: updateIfDefined(durationInSecs, Db.videos.duration),
-						width: updateIfDefined(width, Db.videos.width),
-						height: updateIfDefined(height, Db.videos.height),
-						fps: updateIfDefined(fps, Db.videos.fps),
+						duration: updateIfDefined(durationInSecs, videos.duration),
+						width: updateIfDefined(width, videos.width),
+						height: updateIfDefined(height, videos.height),
+						fps: updateIfDefined(fps, videos.fps),
 					})
-					.where(
-						and(eq(Db.videos.id, videoId), eq(Db.videos.ownerId, user.id)),
-					);
+					.where(and(eq(videos.id, videoIdToUse), eq(videos.ownerId, user.id)));
 
-				// i hate this but it'll have to do
-				const clientSupportsUploadProgress = isFromDesktopSemver(
-					c.req,
-					UPLOAD_PROGRESS_VERSION,
-				);
-				if (fileKey.endsWith("result.mp4") && clientSupportsUploadProgress)
-					await db()
-						.update(Db.videoUploads)
-						.set({ mode: "singlepart" })
-						.where(eq(Db.videoUploads.videoId, videoId));
+			if (videoIdFromKey) {
+				try {
+					await fetch(`${serverEnv().WEB_URL}/api/revalidate`, {
+						method: "POST",
+						headers: {
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({ videoId: videoIdFromKey }),
+					});
+				} catch (revalidateError) {
+					console.error("Failed to revalidate page:", revalidateError);
+				}
 			}
 
-			if (method === "post") return c.json({ presignedPostData: data! });
-			else return c.json({ presignedPutData: data! });
+			if (method === "post") return c.json({ presignedPostData: data });
+			else return c.json({ presignedPutData: data });
 		} catch (s3Error) {
 			console.error("S3 operation failed:", s3Error);
 			throw new Error(

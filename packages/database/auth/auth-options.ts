@@ -43,6 +43,7 @@ export const authOptions = (): NextAuthOptions => {
 				GoogleProvider({
 					clientId: serverEnv().GOOGLE_CLIENT_ID!,
 					clientSecret: serverEnv().GOOGLE_CLIENT_SECRET!,
+					allowDangerousEmailAccountLinking: true,
 					authorization: {
 						params: {
 							scope: [
@@ -112,7 +113,7 @@ export const authOptions = (): NextAuthOptions => {
 				name: `next-auth.session-token`,
 				options: {
 					httpOnly: true,
-					sameSite: "none",
+					sameSite: "lax",
 					path: "/",
 					secure: true,
 				},

@@ -31,16 +31,18 @@ export class Tinybird extends Effect.Service<Tinybird>()("Tinybird", {
 		const token = env.TINYBIRD_TOKEN;
 		const host = env.TINYBIRD_HOST;
 
-		if (!host) {
-			yield* Effect.die(new Error("TINYBIRD_HOST must be set"));
+		const enabled = Boolean(token);
+
+		if (enabled && !host) {
+			yield* Effect.die(
+				new Error("TINYBIRD_HOST must be set when TINYBIRD_TOKEN is provided"),
+			);
 		}
 
 		yield* Effect.logDebug("Initializing Tinybird service", {
 			hasToken: Boolean(token),
-			host,
+			host: host ?? "not set",
 		});
-
-		const enabled = Boolean(token);
 
 		if (!enabled) {
 			yield* Effect.logWarning(
@@ -50,6 +52,9 @@ export class Tinybird extends Effect.Service<Tinybird>()("Tinybird", {
 
 		const request = <T>(path: string, init?: RequestInit) => {
 			if (!enabled) return Effect.succeed<TinybirdResponse<T>>({ data: [] });
+			if (!host) {
+				return Effect.fail(new Error("TINYBIRD_HOST is not set"));
+			}
 
 			return Effect.tryPromise({
 				try: async () => {
@@ -220,6 +225,9 @@ export class Tinybird extends Effect.Service<Tinybird>()("Tinybird", {
 
 		const querySql = <T>(sql: string) => {
 			if (!enabled) return Effect.succeed<TinybirdResponse<T>>({ data: [] });
+			if (!host) {
+				return Effect.fail(new Error("TINYBIRD_HOST is not set"));
+			}
 			const normalized = sql.replace(/\s+/g, " ").trim();
 			const encoded = encodeURIComponent(normalized);
 			const path = `/sql?q=${encoded}&format=JSON`;
