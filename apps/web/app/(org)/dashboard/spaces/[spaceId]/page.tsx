@@ -7,71 +7,50 @@ import {
 	organizations,
 	sharedVideos,
 	spaceMembers,
-	spaces,
 	spaceVideos,
 	users,
 	videos,
+	videoUploads,
 } from "@cap/database/schema";
 import { serverEnv } from "@cap/env";
-import { Video } from "@cap/web-domain";
+import {
+	Database,
+	ImageUploads,
+	makeCurrentUserLayer,
+	Spaces,
+} from "@cap/web-backend";
+import {
+	type ImageUpload,
+	type Organisation,
+	Space,
+	Video,
+} from "@cap/web-domain";
 import { and, count, desc, eq, isNull, sql } from "drizzle-orm";
+import { Effect } from "effect";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { runPromise } from "@/lib/server";
 import { SharedCaps } from "./SharedCaps";
 
 export const metadata: Metadata = {
 	title: "Shared Caps — Cap",
 };
 
-type SpaceData = {
-	id: string;
-	name: string;
-	organizationId: string;
-	createdById: string;
-};
-
-type OrganizationData = {
-	id: string;
-	name: string;
-	ownerId: string;
-};
-
 export type SpaceMemberData = {
 	id: string;
 	userId: string;
 	role: string;
-	image?: string | null;
+	image?: ImageUpload.ImageUrl | null;
 	name: string | null;
 	email: string;
 };
 
 // --- Helper functions ---
-async function fetchSpaceData(id: string) {
-	return db()
-		.select({
-			id: spaces.id,
-			name: spaces.name,
-			organizationId: spaces.organizationId,
-			createdById: spaces.createdById,
-		})
-		.from(spaces)
-		.where(eq(spaces.id, id))
-		.limit(1);
-}
-
-async function fetchOrganizationData(id: string) {
-	return db()
-		.select({
-			id: organizations.id,
-			name: organizations.name,
-			ownerId: organizations.ownerId,
-		})
-		.from(organizations)
-		.where(eq(organizations.id, id))
-		.limit(1);
-}
-
-async function fetchFolders(spaceId: string) {
+async function fetchFolders(
+	spaceId: Space.SpaceIdOrOrganisationId,
+	allSpacesEntry: boolean,
+) {
+	const table = allSpacesEntry ? sharedVideos : spaceVideos;
 	return db()
 		.select({
 			id: folders.id,
@@ -80,111 +59,123 @@ async function fetchFolders(spaceId: string) {
 			parentId: folders.parentId,
 			spaceId: folders.spaceId,
 			videoCount: sql<number>`(
-          SELECT COUNT(*) FROM videos WHERE videos.folderId = folders.id
+          SELECT COUNT(*) FROM ${table} WHERE ${table}.folderId = folders.id
         )`,
 		})
 		.from(folders)
 		.where(and(eq(folders.spaceId, spaceId), isNull(folders.parentId)));
 }
 
-async function fetchSpaceMembers(spaceId: string) {
-	return db()
-		.select({
-			id: spaceMembers.id,
-			userId: spaceMembers.userId,
-			role: sql<string>`'member'`,
-			name: users.name,
-			email: users.email,
-			image: users.image,
-		})
-		.from(spaceMembers)
-		.innerJoin(users, eq(spaceMembers.userId, users.id))
-		.where(eq(spaceMembers.spaceId, spaceId));
-}
+const fetchSpaceMembers = Effect.fn(function* (
+	spaceId: Space.SpaceIdOrOrganisationId,
+) {
+	const db = yield* Database;
+	const imageUploads = yield* ImageUploads;
 
-async function fetchOrganizationMembers(orgId: string) {
-	return db()
-		.select({
-			id: organizationMembers.id,
-			userId: organizationMembers.userId,
-			role: organizationMembers.role,
-			name: users.name,
-			email: users.email,
-			image: users.image,
-		})
-		.from(organizationMembers)
-		.innerJoin(users, eq(organizationMembers.userId, users.id))
-		.where(eq(organizationMembers.organizationId, orgId));
-}
+	return yield* db
+		.use((db) =>
+			db
+				.select({
+					id: spaceMembers.id,
+					userId: spaceMembers.userId,
+					role: sql<string>`'member'`,
+					name: users.name,
+					email: users.email,
+					image: users.image,
+				})
+				.from(spaceMembers)
+				.innerJoin(users, eq(spaceMembers.userId, users.id))
+				.where(eq(spaceMembers.spaceId, spaceId)),
+		)
+		.pipe(
+			Effect.map((v) =>
+				v.map(
+					Effect.fn(function* (v) {
+						return {
+							...v,
+							image: v.image
+								? yield* imageUploads.resolveImageUrl(v.image)
+								: null,
+						};
+					}),
+				),
+			),
+			Effect.flatMap(Effect.all),
+		);
+});
 
-export default async function SharedCapsPage({
-	params,
-	searchParams,
-}: {
-	params: { spaceId: string };
-	searchParams: { [key: string]: string | string[] | undefined };
+const fetchOrganizationMembers = Effect.fn(function* (
+	orgId: Organisation.OrganisationId,
+) {
+	const db = yield* Database;
+	const imageUploads = yield* ImageUploads;
+
+	return yield* db
+		.use((db) =>
+			db
+				.select({
+					id: organizationMembers.id,
+					userId: organizationMembers.userId,
+					role: organizationMembers.role,
+					name: users.name,
+					email: users.email,
+					image: users.image,
+				})
+				.from(organizationMembers)
+				.innerJoin(users, eq(organizationMembers.userId, users.id))
+				.where(eq(organizationMembers.organizationId, orgId)),
+		)
+		.pipe(
+			Effect.map((v) =>
+				v.map(
+					Effect.fn(function* (v) {
+						return {
+							...v,
+							image: v.image
+								? yield* imageUploads.resolveImageUrl(v.image)
+								: null,
+						};
+					}),
+				),
+			),
+			Effect.flatMap(Effect.all),
+		);
+});
+
+export default async function SharedCapsPage(props: {
+	params: Promise<{ spaceId: string }>;
+	searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
+	const searchParams = await props.searchParams;
+	const params = await props.params;
 	const page = Number(searchParams.page) || 1;
 	const limit = Number(searchParams.limit) || 15;
 	const user = await getCurrentUser();
-	const userId = user?.id as string;
-	// this is just how it work atm
-	const spaceOrOrgId = params.spaceId;
+	if (!user) notFound();
 
-	// Parallelize fetching space and org data
-	const [spaceData, organizationData] = await Promise.all([
-		fetchSpaceData(spaceOrOrgId),
-		fetchOrganizationData(spaceOrOrgId),
-	]);
+	const spaceOrOrg = await Effect.flatMap(Spaces, (s) =>
+		s.getSpaceOrOrg(Space.SpaceId.make(params.spaceId)),
+	).pipe(
+		Effect.catchTag("PolicyDenied", () => Effect.sync(() => notFound())),
+		Effect.provide(makeCurrentUserLayer(user)),
+		runPromise,
+	);
 
-	// organizationData assignment handled above
-	if (spaceData.length === 0 && organizationData.length === 0) {
-		notFound();
-	}
+	if (!spaceOrOrg) notFound();
 
-	const isSpace = spaceData.length > 0;
-
-	if (isSpace) {
-		const space = spaceData[0] as SpaceData;
-		const isSpaceCreator = space.createdById === userId;
-		let hasAccess = isSpaceCreator;
-		if (!isSpaceCreator) {
-			const [spaceMembership, orgMembership] = await Promise.all([
-				db()
-					.select({ id: spaceMembers.id })
-					.from(spaceMembers)
-					.where(
-						and(
-							eq(spaceMembers.userId, userId),
-							eq(spaceMembers.spaceId, spaceOrOrgId),
-						),
-					)
-					.limit(1),
-				db()
-					.select({ id: organizationMembers.id })
-					.from(organizationMembers)
-					.where(
-						and(
-							eq(organizationMembers.userId, userId),
-							eq(organizationMembers.organizationId, space.organizationId),
-						),
-					)
-					.limit(1),
-			]);
-			hasAccess = spaceMembership.length > 0 || orgMembership.length > 0;
-		}
-		if (!hasAccess) notFound();
+	if (spaceOrOrg.variant === "space") {
+		const { space } = spaceOrOrg;
 
 		// Fetch members in parallel
 		const [spaceMembersData, organizationMembersData, foldersData] =
 			await Promise.all([
-				fetchSpaceMembers(spaceOrOrgId),
-				fetchOrganizationMembers(space.organizationId),
-				fetchFolders(spaceOrOrgId),
+				fetchSpaceMembers(space.id).pipe(runPromise),
+				fetchOrganizationMembers(space.organizationId).pipe(runPromise),
+				fetchFolders(space.id, false),
 			]);
 
 		async function fetchSpaceVideos(
-			spaceId: string,
+			spaceId: Space.SpaceIdOrOrganisationId,
 			page: number,
 			limit: number,
 		) {
@@ -201,14 +192,23 @@ export default async function SharedCapsPage({
 						totalComments: sql<number>`COUNT(DISTINCT CASE WHEN ${comments.type} = 'text' THEN ${comments.id} END)`,
 						totalReactions: sql<number>`COUNT(DISTINCT CASE WHEN ${comments.type} = 'emoji' THEN ${comments.id} END)`,
 						ownerName: users.name,
-						effectiveDate: sql<string>`COALESCE(JSON_UNQUOTE(JSON_EXTRACT(${videos.metadata}, '$.customCreatedAt')), ${videos.createdAt})`,
+						effectiveDate: videos.effectiveCreatedAt,
+						hasActiveUpload: sql`${videoUploads.videoId} IS NOT NULL`.mapWith(
+							Boolean,
+						),
 					})
 					.from(spaceVideos)
 					.innerJoin(videos, eq(spaceVideos.videoId, videos.id))
 					.leftJoin(comments, eq(videos.id, comments.videoId))
 					.leftJoin(users, eq(videos.ownerId, users.id))
+					.leftJoin(videoUploads, eq(videos.id, videoUploads.videoId))
+					.leftJoin(organizations, eq(videos.orgId, organizations.id))
 					.where(
-						and(eq(spaceVideos.spaceId, spaceId), isNull(spaceVideos.folderId)),
+						and(
+							eq(spaceVideos.spaceId, spaceId),
+							isNull(spaceVideos.folderId),
+							isNull(organizations.tombstoneAt),
+						),
 					)
 					.groupBy(
 						videos.id,
@@ -218,11 +218,7 @@ export default async function SharedCapsPage({
 						videos.metadata,
 						users.name,
 					)
-					.orderBy(
-						desc(
-							sql`COALESCE(JSON_UNQUOTE(JSON_EXTRACT(${videos.metadata}, '$.customCreatedAt')), ${videos.createdAt})`,
-						),
-					)
+					.orderBy(desc(videos.effectiveCreatedAt))
 					.limit(limit)
 					.offset(offset),
 				db()
@@ -240,7 +236,7 @@ export default async function SharedCapsPage({
 
 		// Fetch videos and count in parallel
 		const { videos: spaceVideoData, totalCount } = await fetchSpaceVideos(
-			spaceOrOrgId,
+			space.id,
 			page,
 			limit,
 		);
@@ -261,36 +257,23 @@ export default async function SharedCapsPage({
 				data={processedVideoData}
 				count={totalCount}
 				spaceData={space}
-				dubApiKeyEnabled={!!serverEnv().DUB_API_KEY}
+				spaceId={params.spaceId as Space.SpaceIdOrOrganisationId}
+				analyticsEnabled={Boolean(
+					serverEnv().TINYBIRD_TOKEN && serverEnv().TINYBIRD_HOST,
+				)}
 				spaceMembers={spaceMembersData}
 				organizationMembers={organizationMembersData}
-				currentUserId={userId}
+				currentUserId={user.id}
 				folders={foldersData}
 			/>
 		);
-	} else {
-		const organization = organizationData[0] as OrganizationData;
-		const isOrgOwner = organization.ownerId === userId;
+	}
 
-		if (!isOrgOwner) {
-			const orgMembership = await db()
-				.select({ id: organizationMembers.id })
-				.from(organizationMembers)
-				.where(
-					and(
-						eq(organizationMembers.userId, userId),
-						eq(organizationMembers.organizationId, spaceOrOrgId),
-					),
-				)
-				.limit(1);
-
-			if (orgMembership.length === 0) {
-				notFound();
-			}
-		}
+	if (spaceOrOrg.variant === "organization") {
+		const { organization } = spaceOrOrg;
 
 		async function fetchOrganizationVideos(
-			orgId: string,
+			orgId: Organisation.OrganisationId,
 			page: number,
 			limit: number,
 		) {
@@ -307,16 +290,20 @@ export default async function SharedCapsPage({
 						totalComments: sql<number>`COUNT(DISTINCT CASE WHEN ${comments.type} = 'text' THEN ${comments.id} END)`,
 						totalReactions: sql<number>`COUNT(DISTINCT CASE WHEN ${comments.type} = 'emoji' THEN ${comments.id} END)`,
 						ownerName: users.name,
-						effectiveDate: sql<string>`COALESCE(JSON_UNQUOTE(JSON_EXTRACT(${videos.metadata}, '$.customCreatedAt')), ${videos.createdAt})`,
+						effectiveDate: videos.effectiveCreatedAt,
+						hasActiveUpload: sql`${videoUploads.videoId} IS NOT NULL`.mapWith(
+							Boolean,
+						),
 					})
 					.from(sharedVideos)
 					.innerJoin(videos, eq(sharedVideos.videoId, videos.id))
 					.leftJoin(comments, eq(videos.id, comments.videoId))
 					.leftJoin(users, eq(videos.ownerId, users.id))
+					.leftJoin(videoUploads, eq(videos.id, videoUploads.videoId))
 					.where(
 						and(
 							eq(sharedVideos.organizationId, orgId),
-							isNull(videos.folderId),
+							isNull(sharedVideos.folderId),
 						),
 					)
 					.groupBy(
@@ -328,11 +315,7 @@ export default async function SharedCapsPage({
 						users.name,
 						videos.duration,
 					)
-					.orderBy(
-						desc(
-							sql`COALESCE(JSON_UNQUOTE(JSON_EXTRACT(${videos.metadata}, '$.customCreatedAt')), ${videos.createdAt})`,
-						),
-					)
+					.orderBy(desc(videos.effectiveCreatedAt))
 					.limit(limit)
 					.offset(offset),
 				db()
@@ -356,9 +339,9 @@ export default async function SharedCapsPage({
 
 		const [organizationVideos, organizationMembersData, foldersData] =
 			await Promise.all([
-				fetchOrganizationVideos(spaceOrOrgId, page, limit),
-				fetchOrganizationMembers(spaceOrOrgId),
-				fetchFolders(spaceOrOrgId),
+				fetchOrganizationVideos(organization.id, page, limit),
+				fetchOrganizationMembers(organization.id).pipe(runPromise),
+				fetchFolders(organization.id, true),
 			]);
 
 		const { videos: orgVideoData, totalCount } = organizationVideos;
@@ -380,9 +363,12 @@ export default async function SharedCapsPage({
 				count={totalCount}
 				hideSharedWith
 				organizationData={organization}
-				dubApiKeyEnabled={!!serverEnv().DUB_API_KEY}
+				spaceId={params.spaceId as Space.SpaceIdOrOrganisationId}
+				analyticsEnabled={Boolean(
+					serverEnv().TINYBIRD_TOKEN && serverEnv().TINYBIRD_HOST,
+				)}
 				organizationMembers={organizationMembersData}
-				currentUserId={userId}
+				currentUserId={user.id}
 				folders={foldersData}
 			/>
 		);

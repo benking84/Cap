@@ -1,4 +1,5 @@
 use std::{
+    env::temp_dir,
     ops::{Add, Div, Mul, Sub, SubAssign},
     path::Path,
 };
@@ -30,6 +31,8 @@ pub enum BackgroundSource {
     },
     Color {
         value: Color,
+        #[serde(default = "default_alpha")]
+        alpha: u8,
     },
     Gradient {
         from: Color,
@@ -41,6 +44,10 @@ pub enum BackgroundSource {
 
 fn default_gradient_angle() -> u16 {
     90
+}
+
+fn default_alpha() -> u8 {
+    u8::MAX
 }
 
 impl Default for BackgroundSource {
@@ -173,6 +180,14 @@ impl<T> From<(T, T)> for XY<T> {
     }
 }
 
+#[derive(Type, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum CornerStyle {
+    #[default]
+    Squircle,
+    Rounded,
+}
+
 #[derive(Type, Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Crop {
@@ -193,6 +208,15 @@ pub struct ShadowConfiguration {
     pub blur: f32,    // Shadow blur amount (0-100)
 }
 
+#[derive(Type, Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct BorderConfiguration {
+    pub enabled: bool,
+    pub width: f32,   // Border width in pixels
+    pub color: Color, // Border color (RGB)
+    pub opacity: f32, // Border opacity (0-100)
+}
+
 #[derive(Type, Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct BackgroundConfiguration {
@@ -200,12 +224,27 @@ pub struct BackgroundConfiguration {
     pub blur: f64,
     pub padding: f64,
     pub rounding: f64,
+    #[serde(default)]
+    pub rounding_type: CornerStyle,
     pub inset: u32,
     pub crop: Option<Crop>,
     #[serde(default)]
     pub shadow: f32,
     #[serde(default)]
     pub advanced_shadow: Option<ShadowConfiguration>,
+    #[serde(default)]
+    pub border: Option<BorderConfiguration>,
+}
+
+impl Default for BorderConfiguration {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            width: 5.0,
+            color: [255, 255, 255], // White
+            opacity: 80.0,          // 80% opacity
+        }
+    }
 }
 
 impl Default for BackgroundConfiguration {
@@ -215,10 +254,12 @@ impl Default for BackgroundConfiguration {
             blur: 0.0,
             padding: 0.0,
             rounding: 0.0,
+            rounding_type: CornerStyle::default(),
             inset: 0,
             crop: None,
             shadow: 73.6,
             advanced_shadow: Some(ShadowConfiguration::default()),
+            border: None, // Border is disabled by default for backwards compatibility
         }
     }
 }
@@ -262,6 +303,8 @@ pub struct Camera {
     pub advanced_shadow: Option<ShadowConfiguration>,
     #[serde(default)]
     pub shape: CameraShape,
+    #[serde(default)]
+    pub rounding_type: CornerStyle,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Type, Default)]
@@ -278,7 +321,7 @@ impl Camera {
     }
 
     fn default_rounding() -> f32 {
-        30.0
+        100.0
     }
 }
 
@@ -298,6 +341,7 @@ impl Default for Camera {
                 blur: 10.5,
             }),
             shape: CameraShape::Square,
+            rounding_type: CornerStyle::default(),
         }
     }
 }
@@ -354,13 +398,39 @@ pub enum CursorType {
     Circle,
 }
 
-#[derive(Type, Serialize, Deserialize, Clone, Debug, Default)]
+#[derive(Type, Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum CursorAnimationStyle {
-    #[default]
-    Regular,
     Slow,
-    Fast,
+    #[default]
+    #[serde(alias = "regular", alias = "quick", alias = "rapid", alias = "fast")]
+    Mellow,
+    Custom,
+}
+
+#[derive(Type, Serialize, Deserialize, Clone, Copy, Debug)]
+pub struct CursorSmoothingPreset {
+    pub tension: f32,
+    pub mass: f32,
+    pub friction: f32,
+}
+
+impl CursorAnimationStyle {
+    pub fn preset(self) -> Option<CursorSmoothingPreset> {
+        match self {
+            Self::Slow => Some(CursorSmoothingPreset {
+                tension: 65.0,
+                mass: 1.8,
+                friction: 16.0,
+            }),
+            Self::Mellow => Some(CursorSmoothingPreset {
+                tension: 120.0,
+                mass: 1.1,
+                friction: 18.0,
+            }),
+            Self::Custom => None,
+        }
+    }
 }
 
 #[derive(Type, Serialize, Deserialize, Clone, Debug)]
@@ -368,7 +438,10 @@ pub enum CursorAnimationStyle {
 pub struct CursorConfiguration {
     #[serde(default)]
     pub hide: bool,
-    hide_when_idle: bool,
+    #[serde(default)]
+    pub hide_when_idle: bool,
+    #[serde(default = "CursorConfiguration::default_hide_when_idle_delay")]
+    pub hide_when_idle_delay: f32,
     pub size: u32,
     r#type: CursorType,
     pub animation_style: CursorAnimationStyle,
@@ -389,24 +462,38 @@ fn yes() -> bool {
 
 impl Default for CursorConfiguration {
     fn default() -> Self {
-        Self {
+        let animation_style = CursorAnimationStyle::default();
+        let mut config = Self {
             hide: false,
             hide_when_idle: false,
+            hide_when_idle_delay: Self::default_hide_when_idle_delay(),
             size: 100,
             r#type: CursorType::default(),
-            animation_style: CursorAnimationStyle::Regular,
-            tension: 100.0,
-            mass: 1.0,
-            friction: 20.0,
+            animation_style,
+            tension: 65.0,
+            mass: 1.8,
+            friction: 16.0,
             raw: false,
             motion_blur: 0.5,
             use_svg: true,
+        };
+
+        if let Some(preset) = animation_style.preset() {
+            config.tension = preset.tension;
+            config.mass = preset.mass;
+            config.friction = preset.friction;
         }
+
+        config
     }
 }
 impl CursorConfiguration {
     fn default_raw() -> bool {
         true
+    }
+
+    fn default_hide_when_idle_delay() -> f32 {
+        2.0
     }
 }
 
@@ -419,8 +506,8 @@ pub struct HotkeysConfiguration {
 #[derive(Type, Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct TimelineSegment {
-    #[serde(default)]
-    pub recording_segment: u32,
+    #[serde(default, rename = "recordingSegment")]
+    pub recording_clip: u32,
     pub timescale: f64,
     pub start: f64,
     pub end: f64,
@@ -485,14 +572,14 @@ pub struct TimelineConfiguration {
 }
 
 impl TimelineConfiguration {
-    pub fn get_segment_time(&self, frame_time: f64) -> Option<(f64, u32)> {
+    pub fn get_segment_time(&self, frame_time: f64) -> Option<(f64, &TimelineSegment)> {
         let mut accum_duration = 0.0;
 
         for segment in self.segments.iter() {
             if frame_time < accum_duration + segment.duration() {
                 return segment
                     .interpolate_time(frame_time - accum_duration)
-                    .map(|t| (t, segment.recording_segment));
+                    .map(|t| (t, segment));
             }
 
             accum_duration += segment.duration();
@@ -557,17 +644,32 @@ impl Default for CaptionSettings {
     }
 }
 
-#[derive(Type, Serialize, Deserialize, Clone, Debug)]
+#[derive(Type, Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
-#[derive(Default)]
 pub struct CaptionsData {
     pub segments: Vec<CaptionSegment>,
     pub settings: CaptionSettings,
 }
 
-#[derive(Type, Serialize, Deserialize, Clone, Debug)]
+#[derive(Type, Serialize, Deserialize, Clone, Copy, Debug, Default)]
+pub struct ClipOffsets {
+    #[serde(default)]
+    pub camera: f32,
+    #[serde(default)]
+    pub mic: f32,
+    #[serde(default)]
+    pub system_audio: f32,
+}
+
+#[derive(Type, Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
-#[derive(Default)]
+pub struct ClipConfiguration {
+    pub index: u32,
+    pub offsets: ClipOffsets,
+}
+
+#[derive(Type, Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct ProjectConfiguration {
     pub aspect_ratio: Option<AspectRatio>,
     pub background: BackgroundConfiguration,
@@ -579,6 +681,8 @@ pub struct ProjectConfiguration {
     pub timeline: Option<TimelineConfiguration>,
     #[serde(default)]
     pub captions: Option<CaptionsData>,
+    #[serde(default)]
+    pub clips: Vec<ClipConfiguration>,
 }
 
 impl ProjectConfiguration {
@@ -591,17 +695,23 @@ impl ProjectConfiguration {
     }
 
     pub fn write(&self, project_path: impl AsRef<Path>) -> Result<(), std::io::Error> {
-        std::fs::write(
+        let temp_path = temp_dir().join(uuid::Uuid::new_v4().to_string());
+
+        // Write to temporary file first to ensure readers don't see partial files
+        std::fs::write(&temp_path, serde_json::to_string_pretty(self)?)?;
+
+        std::fs::rename(
+            &temp_path,
             project_path.as_ref().join("project-config.json"),
-            serde_json::to_string_pretty(self)?,
-        )
+        )?;
+
+        Ok(())
     }
 
-    pub fn get_segment_time(&self, frame_time: f64) -> Option<(f64, u32)> {
+    pub fn get_segment_time(&self, frame_time: f64) -> Option<(f64, &TimelineSegment)> {
         self.timeline
             .as_ref()
-            .map(|t| t.get_segment_time(frame_time))
-            .unwrap_or(Some((frame_time, 0)))
+            .and_then(|t| t.get_segment_time(frame_time))
     }
 }
 

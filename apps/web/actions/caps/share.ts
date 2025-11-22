@@ -11,12 +11,13 @@ import {
 	spaceVideos,
 	videos,
 } from "@cap/database/schema";
+import type { Organisation, Space, Video } from "@cap/web-domain";
 import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 interface ShareCapParams {
-	capId: string;
-	spaceIds: string[];
+	capId: Video.VideoId;
+	spaceIds: Space.SpaceIdOrOrganisationId[];
 	public?: boolean;
 }
 
@@ -52,7 +53,7 @@ export async function shareCap({
 			.from(organizations)
 			.where(
 				and(
-					inArray(organizations.id, spaceIds),
+					inArray(organizations.id, spaceIds as Organisation.OrganisationId[]),
 					inArray(organizations.id, userOrganizationIds),
 				),
 			)

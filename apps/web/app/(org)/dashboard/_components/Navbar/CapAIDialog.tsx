@@ -15,7 +15,7 @@ import { useDashboardContext, useTheme } from "../../Contexts";
 
 const CapAIDialog = ({ setOpen }: { setOpen: (open: boolean) => void }) => {
 	const { theme } = useTheme();
-	const { isSubscribed, setUpgradeModalOpen } = useDashboardContext();
+	const { user, setUpgradeModalOpen } = useDashboardContext();
 
 	const { RiveComponent: CapAIArt } = useRive({
 		src: "/rive/bento.riv",
@@ -50,7 +50,7 @@ const CapAIDialog = ({ setOpen }: { setOpen: (open: boolean) => void }) => {
 					<h4 className="text-sm font-medium text-gray-12">
 						Features include:
 					</h4>
-					<ul className="flex flex-wrap gap-2 text-sm text-gray-11">
+					<ul className="flex flex-wrap gap-2 text-sm text-gray-12">
 						{[
 							"Auto-generated titles",
 							"Recording summaries",
@@ -65,14 +65,14 @@ const CapAIDialog = ({ setOpen }: { setOpen: (open: boolean) => void }) => {
 									icon={faWandMagicSparkles}
 									className="mr-2 mt-0.5 text-blue-11 size-3"
 								/>
-								<span>{feature}</span>
+								<span className="text-gray-12">{feature}</span>
 							</li>
 						))}
 					</ul>
 				</div>
 			</div>
 			<DialogFooter>
-				{!isSubscribed ? (
+				{!user.isPro ? (
 					<div className="flex gap-2 ml-auto">
 						<Button
 							autoFocus={false}

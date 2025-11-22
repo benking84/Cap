@@ -1,13 +1,13 @@
 "use client";
 
 import { LogoBadge } from "@cap/ui";
-import { faMoon, faSun } from "@fortawesome/free-solid-svg-icons";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useClickAway } from "@uidotdev/usehooks";
 import { AnimatePresence, motion } from "framer-motion";
-import { Menu, X } from "lucide-react";
+import { X } from "lucide-react";
 import Link from "next/link";
 import { type MutableRefObject, useState } from "react";
+
+import { ThemeToggleIcon } from "@/components/theme-toggle-icon";
 import { useTheme } from "../../Contexts";
 import NavItems from "./Items";
 
@@ -54,24 +54,15 @@ export const AdminMobileNav = () => {
 						<LogoBadge className="block w-auto h-8" />
 					</Link>
 				</div>
-				<div className="flex gap-4 items-center h-full">
+				<div className="flex gap-4 items-center px-4 h-full">
 					<div
 						onClick={() => {
 							setThemeHandler(theme === "light" ? "dark" : "light");
 						}}
 						className="flex justify-center items-center rounded-full border transition-colors cursor-pointer lg:hidden bg-gray-4 hover:border-gray-6 hover:bg-gray-5 size-9 border-gray-5"
 					>
-						<FontAwesomeIcon
-							className="text-gray-12 size-3.5"
-							icon={theme === "dark" ? faSun : faMoon}
-						/>
+						<ThemeToggleIcon />
 					</div>
-					<button
-						className="flex flex-col gap-2 justify-center items-center px-5 h-full text-white border-l border-gray-3 lg:hidden"
-						onClick={() => setSidebarOpen(true)}
-					>
-						<Menu className="text-gray-12 size-7" aria-hidden="true" />
-					</button>
 				</div>
 			</div>
 		</>

@@ -5,14 +5,16 @@ import { RpcSerialization, RpcServer } from "@effect/rpc";
 import { Layer } from "effect";
 import { Dependencies } from "@/lib/server";
 
+const rpcLayer = Layer.mergeAll(
+	RpcAuthMiddlewareLive,
+	RpcsLive,
+	RpcSerialization.layerJson,
+	HttpServer.layerContext,
+);
+
 const { handler } = RpcServer.toWebHandler(Rpcs, {
-	layer: Layer.mergeAll(
-		RpcAuthMiddlewareLive,
-		RpcsLive,
-		RpcSerialization.layerJson,
-		HttpServer.layerContext,
-	).pipe(Layer.provideMerge(Dependencies)),
+	layer: Layer.provide(Dependencies)(rpcLayer),
 });
 
-export const GET = handler;
-export const POST = handler;
+export const GET = (r: Request) => handler(r);
+export const POST = (r: Request) => handler(r);

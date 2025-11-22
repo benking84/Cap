@@ -4,13 +4,14 @@ import { Button } from "@cap/ui";
 import clsx from "clsx";
 import { useDetectPlatform } from "hooks/useDetectPlatform";
 import { Clapperboard, Zap } from "lucide-react";
-import { useState } from "react";
+import { type JSX, useState } from "react";
 import {
 	getDownloadButtonText,
 	getDownloadUrl,
 	getPlatformIcon,
 } from "@/utils/platform";
 import { homepageCopy } from "../../../data/homepage-copy";
+import UpgradeToPro from "../_components/UpgradeToPro";
 
 interface Mode {
 	name: "Instant Mode" | "Studio Mode";
@@ -55,10 +56,10 @@ const RecordingModes = () => {
 	return (
 		<div className="w-full max-w-[1000px] mx-auto px-5">
 			<div className="flex flex-col gap-2 justify-center items-center text-center">
-				<h1 className="text-4xl font-medium text-12">
+				<h1 className="text-4xl font-medium text-gray-12">
 					{homepageCopy.recordingModes.title}
 				</h1>
-				<p className="text-lg text-gray-10">
+				<p className="text-lg text-gray-10 w-full max-w-[670px] mx-auto">
 					{homepageCopy.recordingModes.subtitle}
 				</p>
 			</div>
@@ -142,33 +143,26 @@ const RecordingModes = () => {
 				</div>
 				{/*Video Description*/}
 				<div className="p-4 border-t border-b bg-gray-2 border-gray-5">
-					<p className="mx-auto w-full text-sm text-center md:text-xl text-gray-12">
+					<p className="mx-auto w-full text-lg text-center text-gray-12">
 						{activeMode?.description}
 					</p>
 				</div>
 				<div className="p-6">
-					<div className="flex flex-col items-center space-y-2 sm:flex-row sm:space-y-0 sm:space-x-4 sm:justify-center">
+					<div className="flex flex-col items-center space-y-4 sm:flex-row sm:space-y-0 sm:space-x-4 sm:justify-center">
 						<Button
-							variant="gray"
+							variant="dark"
 							href={
 								platform === "windows"
 									? "/download"
 									: getDownloadUrl(platform, isIntel)
 							}
 							size="lg"
-							className="flex justify-center items-center w-full font-medium sm:w-auto"
+							className="flex justify-center items-center font-medium w-fit"
 						>
 							{!loading && getPlatformIcon(platform)}
 							{getDownloadButtonText(platform, loading, isIntel)}
 						</Button>
-						<Button
-							variant="blue"
-							href="/pricing"
-							size="lg"
-							className="w-full font-medium sm:w-auto"
-						>
-							{homepageCopy.header.cta.primaryButton}
-						</Button>
+						<UpgradeToPro text={homepageCopy.header.cta.primaryButton} />
 					</div>
 				</div>
 			</div>

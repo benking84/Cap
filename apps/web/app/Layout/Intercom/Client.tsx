@@ -2,16 +2,17 @@
 
 import Intercom from "@intercom/messenger-js-sdk";
 import { usePathname } from "next/navigation";
-import { use, useEffect } from "react";
-import { useAuthContext } from "../AuthContext";
+import { useEffect } from "react";
+import { useCurrentUser } from "../AuthContext";
 
 export function Client(props: { hash?: string }) {
-	const user = use(useAuthContext().user);
+	const user = useCurrentUser();
 	const pathname = usePathname();
 	const isSharePage = pathname?.startsWith("/s/");
+	const isBlogPage = pathname?.startsWith("/blog");
 
 	useEffect(() => {
-		if (!isSharePage) {
+		if (!isSharePage && !isBlogPage) {
 			if (props.hash && user) {
 				Intercom({
 					app_id: "efxq71cv",

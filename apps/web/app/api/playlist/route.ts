@@ -1,10 +1,5 @@
 import { serverEnv } from "@cap/env";
-import {
-	provideOptionalAuth,
-	S3BucketAccess,
-	S3Buckets,
-	Videos,
-} from "@cap/web-backend";
+import { provideOptionalAuth, S3Buckets, Videos } from "@cap/web-backend";
 import { Video } from "@cap/web-domain";
 import {
 	HttpApi,
@@ -22,7 +17,7 @@ import {
 	generateMasterPlaylist,
 } from "@/utils/video/ffmpeg/helpers";
 
-export const revalidate = "force-dynamic";
+export const dynamic = "force-dynamic";
 
 const GetPlaylistParams = Schema.Struct({
 	videoId: Video.VideoId,
@@ -52,22 +47,17 @@ const ApiLive = HttpApiBuilder.api(Api).pipe(
 
 				return handlers.handle("getVideoSrc", ({ urlParams }) =>
 					Effect.gen(function* () {
-						const [video] = yield* videos.getById(urlParams.videoId).pipe(
-							Effect.flatten,
-							Effect.catchTag(
-								"NoSuchElementException",
-								() => new HttpApiError.NotFound(),
-							),
-						);
+						const [video] = yield* videos
+							.getByIdForViewing(urlParams.videoId)
+							.pipe(
+								Effect.flatten,
+								Effect.catchTag(
+									"NoSuchElementException",
+									() => new HttpApiError.NotFound(),
+								),
+							);
 
-						const [S3ProviderLayer, customBucket] =
-							yield* s3Buckets.getProviderLayer(video.bucketId);
-
-						return yield* getPlaylistResponse(
-							video,
-							Option.isSome(customBucket),
-							urlParams,
-						).pipe(Effect.provide(S3ProviderLayer));
+						return yield* getPlaylistResponse(video, urlParams);
 					}).pipe(
 						provideOptionalAuth,
 						Effect.tapErrorCause(Effect.logError),
@@ -78,6 +68,7 @@ const ApiLive = HttpApiBuilder.api(Api).pipe(
 							S3Error: () => new HttpApiError.InternalServerError(),
 							UnknownException: () => new HttpApiError.InternalServerError(),
 						}),
+						Effect.provideService(S3Buckets, s3Buckets),
 					),
 				);
 			}),
@@ -87,16 +78,17 @@ const ApiLive = HttpApiBuilder.api(Api).pipe(
 
 const getPlaylistResponse = (
 	video: Video.Video,
-	isCustomBucket: boolean,
 	urlParams: (typeof GetPlaylistParams)["Type"],
 ) =>
 	Effect.gen(function* () {
-		const s3 = yield* S3BucketAccess;
+		const [s3, customBucket] = yield* S3Buckets.getBucketAccess(video.bucketId);
+		const isMp4Source =
+			video.source.type === "desktopMP4" || video.source.type === "webMP4";
 
-		if (!isCustomBucket) {
+		if (Option.isNone(customBucket)) {
 			let redirect = `${video.ownerId}/${video.id}/combined-source/stream.m3u8`;
 
-			if (video.source.type === "desktopMP4" || urlParams.videoType === "mp4")
+			if (isMp4Source || urlParams.videoType === "mp4")
 				redirect = `${video.ownerId}/${video.id}/result.mp4`;
 			else if (video.source.type === "MediaConvert")
 				redirect = `${video.ownerId}/${video.id}/output/video_recording_000.m3u8`;
@@ -157,7 +149,7 @@ const getPlaylistResponse = (
 				return HttpServerResponse.text(playlist, {
 					headers: CACHE_CONTROL_HEADERS,
 				});
-			} else if (video.source.type === "desktopMP4") {
+			} else if (isMp4Source) {
 				yield* Effect.log(
 					`Returning path ${`${video.ownerId}/${video.id}/result.mp4`}`,
 				);
@@ -240,7 +232,7 @@ const getPlaylistResponse = (
 		}).pipe(Effect.withSpan("generateUrls"));
 	});
 
-const { handler } = apiToHandler(ApiLive);
+const handler = apiToHandler(ApiLive);
 
-export const GET = handler;
-export const HEAD = handler;
+export const GET = (r: Request) => handler(r);
+export const HEAD = (r: Request) => handler(r);

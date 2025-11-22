@@ -1,6 +1,7 @@
 "use client";
 
 import { Button, Input, LogoBadge } from "@cap/ui";
+import { Organisation } from "@cap/web-domain";
 import {
 	faArrowLeft,
 	faEnvelope,
@@ -18,6 +19,7 @@ import { Suspense, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { getOrganizationSSOData } from "@/actions/organization/get-organization-sso-data";
 import { trackEvent } from "@/app/utils/analytics";
+import { usePublicEnv } from "@/utils/public-env";
 
 const MotionInput = motion(Input);
 const MotionLogoBadge = motion(LogoBadge);
@@ -117,7 +119,9 @@ export function LoginForm() {
 		}
 
 		try {
-			const data = await getOrganizationSSOData(organizationId);
+			const data = await getOrganizationSSOData(
+				Organisation.OrganisationId.make(organizationId),
+			);
 			setOrganizationName(data.name);
 
 			signIn("workos", undefined, {
@@ -157,7 +161,7 @@ export function LoginForm() {
 				</motion.p>
 			</motion.div>
 			<MotionLink layout="position" className="flex mx-auto size-fit" href="/">
-				<MotionLogoBadge layout="position" className="w-[72px] h-[72px]" />
+				<MotionLogoBadge layout="position" className="size-12" />
 			</MotionLink>
 			<motion.div
 				layout="position"
@@ -401,6 +405,8 @@ const NormalLogin = ({
 	oauthError: boolean;
 	handleGoogleSignIn: () => void;
 }) => {
+	const publicEnv = usePublicEnv();
+
 	return (
 		<motion.div>
 			<motion.div layout className="flex flex-col space-y-3">
@@ -437,55 +443,71 @@ const NormalLogin = ({
                   </div>
                 )} */}
 			</motion.div>
-			<div className="flex gap-4 items-center my-4">
-				<span className="flex-1 h-px bg-gray-5" />
-				<p className="text-sm text-center text-gray-10">OR</p>
-				<span className="flex-1 h-px bg-gray-5" />
-			</div>
-			<motion.div
-				layout
-				className="flex flex-col gap-3 justify-center items-center"
+			<motion.p
+				layout="position"
+				className="mt-3 mb-2 text-xs text-center text-gray-9"
 			>
-				{!oauthError && (
-					<>
-						<MotionButton
-							variant="gray"
-							type="button"
-							className="flex gap-2 justify-center items-center w-full text-sm"
-							onClick={handleGoogleSignIn}
-							disabled={loading}
-						>
-							<Image src="/google.svg" alt="Google" width={16} height={16} />
-							Login with Google
-						</MotionButton>
-					</>
-				)}
-
-				{oauthError && (
-					<div className="flex gap-3 items-center p-3 bg-red-400 rounded-xl border border-red-600">
-						<FontAwesomeIcon
-							className="text-gray-50 size-8"
-							icon={faExclamationCircle}
-						/>
-						<p className="text-xs leading-5 text-gray-50">
-							It looks like you've previously used this email to sign up via
-							email login. Please enter your email below to receive a sign in
-							link.
-						</p>
-					</div>
-				)}
-				<MotionButton
-					variant="gray"
-					type="button"
-					className="w-full"
-					layout
-					onClick={() => setShowOrgInput(true)}
-					disabled={loading}
+				Don't have an account?{" "}
+				<Link
+					href="/signup"
+					className="text-xs font-semibold text-blue-9 hover:text-blue-8"
 				>
-					<LucideArrowUpRight size={20} />
-					Login with SAML SSO
-				</MotionButton>
-			</motion.div>
+					Sign up here
+				</Link>
+			</motion.p>
+
+			{(publicEnv.googleAuthAvailable || publicEnv.workosAuthAvailable) && (
+				<>
+					<div className="flex gap-4 items-center mt-4 mb-4">
+						<span className="flex-1 h-px bg-gray-5" />
+						<p className="text-sm text-center text-gray-10">OR</p>
+						<span className="flex-1 h-px bg-gray-5" />
+					</div>
+					<motion.div
+						layout
+						className="flex flex-col gap-3 justify-center items-center"
+					>
+						{publicEnv.googleAuthAvailable && !oauthError && (
+							<MotionButton
+								variant="gray"
+								type="button"
+								className="flex gap-2 justify-center items-center w-full text-sm"
+								onClick={handleGoogleSignIn}
+								disabled={loading || emailSent}
+							>
+								<Image src="/google.svg" alt="Google" width={16} height={16} />
+								Login with Google
+							</MotionButton>
+						)}
+
+						{oauthError && (
+							<div className="flex gap-3 items-center p-3 bg-red-400 rounded-xl border border-red-600">
+								<FontAwesomeIcon
+									className="text-gray-50 size-8"
+									icon={faExclamationCircle}
+								/>
+								<p className="text-xs leading-5 text-gray-50">
+									It looks like you've previously used this email to sign up via
+									email login. Please enter your email.
+								</p>
+							</div>
+						)}
+						{publicEnv.workosAuthAvailable && (
+							<MotionButton
+								variant="gray"
+								type="button"
+								className="w-full"
+								layout
+								onClick={() => setShowOrgInput(true)}
+								disabled={loading || emailSent}
+							>
+								<LucideArrowUpRight size={20} />
+								Login with SAML SSO
+							</MotionButton>
+						)}
+					</motion.div>
+				</>
+			)}
 		</motion.div>
 	);
 };

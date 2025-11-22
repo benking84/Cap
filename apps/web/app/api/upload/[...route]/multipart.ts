@@ -1,16 +1,61 @@
-import { db, updateIfDefined } from "@cap/database";
-import { s3Buckets, videos } from "@cap/database/schema";
+import {
+	CloudFrontClient,
+	CreateInvalidationCommand,
+} from "@aws-sdk/client-cloudfront";
+import { updateIfDefined } from "@cap/database";
+import * as Db from "@cap/database/schema";
 import { serverEnv } from "@cap/env";
+import {
+	AwsCredentials,
+	Database,
+	makeCurrentUser,
+	makeCurrentUserLayer,
+	provideOptionalAuth,
+	S3Buckets,
+	Videos,
+	VideosPolicy,
+	VideosRepo,
+} from "@cap/web-backend";
+import { CurrentUser, Policy, Video } from "@cap/web-domain";
 import { zValidator } from "@hono/zod-validator";
 import { and, eq } from "drizzle-orm";
-import { Hono } from "hono";
+import { Effect, Option, Schedule } from "effect";
+import { Hono, type MiddlewareHandler } from "hono";
 import { z } from "zod";
 import { withAuth } from "@/app/api/utils";
-import { createBucketProvider } from "@/utils/s3";
+import { runPromise } from "@/lib/server";
 import { stringOrNumberOptional } from "@/utils/zod";
 import { parseVideoIdOrFileKey } from "../utils";
 
 export const app = new Hono().use(withAuth);
+
+const runPromiseAnyEnv = runPromise as <A, E>(
+	effect: Effect.Effect<A, E, any>,
+) => Promise<A>;
+
+const abortRequestSchema = z
+	.object({
+		uploadId: z.string(),
+	})
+	.and(
+		z.union([
+			z.object({ videoId: z.string() }),
+			// deprecated
+			z.object({ fileKey: z.string() }),
+		]),
+	);
+
+type AbortRequestInput = z.input<typeof abortRequestSchema>;
+
+type AbortValidatorInput = {
+	in: { json: AbortRequestInput };
+	out: { json: z.output<typeof abortRequestSchema> };
+};
+
+const abortRequestValidator = zValidator(
+	"json",
+	abortRequestSchema,
+) as MiddlewareHandler<any, "/abort", AbortValidatorInput>;
 
 app.post(
 	"/initiate",
@@ -33,36 +78,77 @@ app.post(
 			subpath: "result.mp4",
 		});
 
+		const videoIdFromFileKey = fileKey.split("/")[1];
+		const videoIdRaw = "videoId" in body ? body.videoId : videoIdFromFileKey;
+		if (!videoIdRaw) return c.text("Video id not found", 400);
+		const videoId = Video.VideoId.make(videoIdRaw);
+
+		const resp = await Effect.gen(function* () {
+			const repo = yield* VideosRepo;
+			const policy = yield* VideosPolicy;
+			const db = yield* Database;
+
+			const video = yield* repo
+				.getById(videoId)
+				.pipe(Policy.withPolicy(policy.isOwner(videoId)));
+			if (Option.isNone(video)) return yield* new Video.NotFoundError();
+
+			yield* db.use((db) =>
+				db
+					.update(Db.videoUploads)
+					.set({ mode: "multipart" })
+					.where(eq(Db.videoUploads.videoId, video.value[0].id)),
+			);
+		}).pipe(
+			Effect.tapError(Effect.logError),
+			Effect.catchAll((e) => {
+				if (e._tag === "VideoNotFoundError")
+					return Effect.succeed<Response>(c.text("Video not found", 404));
+
+				return Effect.succeed<Response>(
+					c.json({ error: "Error initiating multipart upload" }, 500),
+				);
+			}),
+			Effect.provide(makeCurrentUserLayer(user)),
+			provideOptionalAuth,
+			runPromiseAnyEnv,
+		);
+		if (resp) return resp;
+
 		try {
 			try {
-				const { bucket } = await getUserBucketWithClient(user.id);
+				const uploadId = await Effect.gen(function* () {
+					const [bucket] = yield* S3Buckets.getBucketAccessForUser(user.id);
 
-				const finalContentType = contentType || "video/mp4";
-				console.log(
-					`Creating multipart upload in bucket: ${bucket.name}, content-type: ${finalContentType}, key: ${fileKey}`,
-				);
+					const finalContentType = contentType || "video/mp4";
+					console.log(
+						`Creating multipart upload in bucket: ${bucket.bucketName}, content-type: ${finalContentType}, key: ${fileKey}`,
+					);
 
-				const { UploadId } = await bucket.multipart.create(fileKey, {
-					ContentType: finalContentType,
-					Metadata: {
-						userId: user.id,
-						source: "cap-multipart-upload",
-					},
-					CacheControl: "max-age=31536000",
-				});
+					const { UploadId } = yield* bucket.multipart.create(fileKey, {
+						ContentType: finalContentType,
+						Metadata: {
+							userId: user.id,
+							source: "cap-multipart-upload",
+						},
+						CacheControl: "max-age=31536000",
+					});
 
-				if (!UploadId) {
-					throw new Error("No UploadId returned from S3");
-				}
+					if (!UploadId) {
+						throw new Error("No UploadId returned from S3");
+					}
 
-				console.log(
-					`Successfully initiated multipart upload with ID: ${UploadId}`,
-				);
-				console.log(
-					`Upload details: Bucket=${bucket.name}, Key=${fileKey}, ContentType=${finalContentType}`,
-				);
+					console.log(
+						`Successfully initiated multipart upload with ID: ${UploadId}`,
+					);
+					console.log(
+						`Upload details: Bucket=${bucket.bucketName}, Key=${fileKey}, ContentType=${finalContentType}`,
+					);
 
-				return c.json({ uploadId: UploadId });
+					return UploadId;
+				}).pipe(provideOptionalAuth, runPromiseAnyEnv);
+
+				return c.json({ uploadId: uploadId });
 			} catch (s3Error) {
 				console.error("S3 operation failed:", s3Error);
 				throw new Error(
@@ -92,7 +178,8 @@ app.post(
 			.object({
 				uploadId: z.string(),
 				partNumber: z.number(),
-				md5Sum: z.string(),
+				// deprecated
+				md5Sum: z.string().optional(),
 			})
 			.and(
 				z.union([
@@ -103,7 +190,7 @@ app.post(
 			),
 	),
 	async (c) => {
-		const { uploadId, partNumber, md5Sum, ...body } = c.req.valid("json");
+		const { uploadId, partNumber, ...body } = c.req.valid("json");
 		const user = c.get("user");
 
 		const fileKey = parseVideoIdOrFileKey(user.id, {
@@ -113,18 +200,23 @@ app.post(
 
 		try {
 			try {
-				const { bucket } = await getUserBucketWithClient(user.id);
+				const presignedUrl = await Effect.gen(function* () {
+					const [bucket] = yield* S3Buckets.getBucketAccessForUser(user.id);
 
-				console.log(
-					`Getting presigned URL for part ${partNumber} of upload ${uploadId}`,
-				);
+					console.log(
+						`Getting presigned URL for part ${partNumber} of upload ${uploadId}`,
+					);
 
-				const presignedUrl = await bucket.multipart.getPresignedUploadPartUrl(
-					fileKey,
-					uploadId,
-					partNumber,
-					{ ContentMD5: md5Sum },
-				);
+					const presignedUrl =
+						yield* bucket.multipart.getPresignedUploadPartUrl(
+							fileKey,
+							uploadId,
+							partNumber,
+							{ ContentMD5: body.md5Sum },
+						);
+
+					return presignedUrl;
+				}).pipe(provideOptionalAuth, runPromiseAnyEnv);
 
 				return c.json({ presignedUrl });
 			} catch (s3Error) {
@@ -175,66 +267,90 @@ app.post(
 				]),
 			),
 	),
-	async (c) => {
+	(c) => {
 		const { uploadId, parts, ...body } = c.req.valid("json");
 		const user = c.get("user");
 
-		const fileKey = parseVideoIdOrFileKey(user.id, {
-			...body,
-			subpath: "result.mp4",
-		});
+		return Effect.gen(function* () {
+			const repo = yield* VideosRepo;
+			const policy = yield* VideosPolicy;
+			const db = yield* Database;
 
-		try {
-			try {
-				const { bucket } = await getUserBucketWithClient(user.id);
+			const fileKey = parseVideoIdOrFileKey(user.id, {
+				...body,
+				subpath: "result.mp4",
+			});
 
-				console.log(
-					`Completing multipart upload ${uploadId} with ${parts.length} parts for key: ${fileKey}`,
+			const videoIdFromFileKey = fileKey.split("/")[1];
+			const videoIdRaw = "videoId" in body ? body.videoId : videoIdFromFileKey;
+			if (!videoIdRaw) return c.text("Video id not found", 400);
+			const videoId = Video.VideoId.make(videoIdRaw);
+
+			const maybeVideo = yield* repo
+				.getById(videoId)
+				.pipe(Policy.withPolicy(policy.isOwner(videoId)));
+			if (Option.isNone(maybeVideo)) {
+				c.status(404);
+				return c.text(`Video '${encodeURIComponent(videoId)}' not found`);
+			}
+			const [video] = maybeVideo.value;
+
+			return yield* Effect.gen(function* () {
+				const [bucket, customBucket] = yield* S3Buckets.getBucketAccess(
+					video.bucketId,
 				);
 
-				const totalSize = parts.reduce((acc, part) => acc + part.size, 0);
-				console.log(`Total size of all parts: ${totalSize} bytes`);
-
-				const sortedParts = [...parts].sort(
-					(a, b) => a.partNumber - b.partNumber,
-				);
-
-				const sequentialCheck = sortedParts.every(
-					(part, index) => part.partNumber === index + 1,
-				);
-
-				if (!sequentialCheck) {
-					console.warn(
-						"WARNING: Part numbers are not sequential! This may cause issues with the assembled file.",
+				const { result, formattedParts } = yield* Effect.gen(function* () {
+					console.log(
+						`Completing multipart upload ${uploadId} with ${parts.length} parts for key: ${fileKey}`,
 					);
-				}
 
-				const formattedParts = sortedParts.map((part) => ({
-					PartNumber: part.partNumber,
-					ETag: part.etag,
-				}));
+					const totalSize = parts.reduce((acc, part) => acc + part.size, 0);
+					console.log(`Total size of all parts: ${totalSize} bytes`);
 
-				console.log(
-					"Sending to S3:",
-					JSON.stringify(
-						{
-							Bucket: bucket.name,
-							Key: fileKey,
-							UploadId: uploadId,
+					const sortedParts = [...parts].sort(
+						(a, b) => a.partNumber - b.partNumber,
+					);
+
+					const sequentialCheck = sortedParts.every(
+						(part, index) => part.partNumber === index + 1,
+					);
+
+					if (!sequentialCheck) {
+						console.warn(
+							"WARNING: Part numbers are not sequential! This may cause issues with the assembled file.",
+						);
+					}
+
+					const formattedParts = sortedParts.map((part) => ({
+						PartNumber: part.partNumber,
+						ETag: part.etag,
+					}));
+
+					console.log(
+						"Sending to S3:",
+						JSON.stringify(
+							{
+								Bucket: bucket.bucketName,
+								Key: fileKey,
+								UploadId: uploadId,
+								Parts: formattedParts,
+							},
+							null,
+							2,
+						),
+					);
+
+					const result = yield* bucket.multipart.complete(fileKey, uploadId, {
+						MultipartUpload: {
 							Parts: formattedParts,
 						},
-						null,
-						2,
-					),
-				);
+					});
 
-				const result = await bucket.multipart.complete(fileKey, uploadId, {
-					MultipartUpload: {
-						Parts: formattedParts,
-					},
+					return { result, formattedParts };
 				});
 
-				try {
+				return yield* Effect.gen(function* () {
 					console.log(
 						`Multipart upload completed successfully: ${
 							result.Location || "no location"
@@ -242,68 +358,110 @@ app.post(
 					);
 					console.log(`Complete response: ${JSON.stringify(result, null, 2)}`);
 
-					try {
-						console.log(
-							"Performing metadata fix by copying the object to itself...",
+					console.log(
+						"Performing metadata fix by copying the object to itself...",
+					);
+
+					yield* bucket
+						.copyObject(`${bucket.bucketName}/${fileKey}`, fileKey, {
+							ContentType: "video/mp4",
+							MetadataDirective: "REPLACE",
+						})
+						.pipe(
+							Effect.tap((result) =>
+								Effect.log("Copy for metadata fix successful:", result),
+							),
+							Effect.catchAll((e) =>
+								Effect.logError(
+									"Warning: Failed to copy object to fix metadata:",
+									e,
+								),
+							),
+							Effect.retry({
+								times: 3,
+								schedule: Schedule.exponential("50 millis"),
+							}),
 						);
 
-						const copyResult = await bucket.copyObject(
-							`${bucket.name}/${fileKey}`,
-							fileKey,
-							{
-								ContentType: "video/mp4",
-								MetadataDirective: "REPLACE",
-							},
-						);
+					yield* bucket.headObject(fileKey).pipe(
+						Effect.tap((headResult) =>
+							Effect.log(
+								`Object verification successful: ContentType=${headResult.ContentType}, ContentLength=${headResult.ContentLength}`,
+							),
+						),
+						Effect.catchAll((headError) =>
+							Effect.logError(`Warning: Unable to verify object: ${headError}`),
+						),
+						Effect.retry({
+							times: 3,
+							schedule: Schedule.exponential("50 millis"),
+						}),
+					);
 
-						console.log("Copy for metadata fix successful:", copyResult);
-					} catch (copyError) {
-						console.error(
-							"Warning: Failed to copy object to fix metadata:",
-							copyError,
-						);
-					}
+					yield* db.use((db) =>
+						db.transaction(() =>
+							Promise.all([
+								db
+									.update(Db.videos)
+									.set({
+										duration: updateIfDefined(
+											body.durationInSecs,
+											Db.videos.duration,
+										),
+										width: updateIfDefined(body.width, Db.videos.width),
+										height: updateIfDefined(body.height, Db.videos.height),
+										fps: updateIfDefined(body.fps, Db.videos.fps),
+									})
+									.where(
+										and(
+											eq(Db.videos.id, Video.VideoId.make(videoId)),
+											eq(Db.videos.ownerId, user.id),
+										),
+									),
+								db
+									.delete(Db.videoUploads)
+									.where(
+										eq(Db.videoUploads.videoId, Video.VideoId.make(videoId)),
+									),
+							]),
+						),
+					);
 
-					try {
-						const headResult = await bucket.headObject(fileKey);
-						console.log(
-							`Object verification successful: ContentType=${headResult.ContentType}, ContentLength=${headResult.ContentLength}`,
-						);
-					} catch (headError) {
-						console.error(`Warning: Unable to verify object: ${headError}`);
-					}
-
-					const videoIdFromFileKey = fileKey.split("/")[1];
-
-					const videoIdToUse =
-						"videoId" in body ? body.videoId : videoIdFromFileKey;
-					if (videoIdToUse)
-						await db()
-							.update(videos)
-							.set({
-								duration: updateIfDefined(body.durationInSecs, videos.duration),
-								width: updateIfDefined(body.width, videos.width),
-								height: updateIfDefined(body.height, videos.height),
-								fps: updateIfDefined(body.fps, videos.fps),
-							})
-							.where(
-								and(eq(videos.id, videoIdToUse), eq(videos.ownerId, user.id)),
-							);
-
-					if (videoIdFromFileKey) {
-						try {
-							await fetch(`${serverEnv().WEB_URL}/api/revalidate`, {
-								method: "POST",
-								headers: {
-									"Content-Type": "application/json",
-								},
-								body: JSON.stringify({ videoId: videoIdFromFileKey }),
+					if (Option.isNone(customBucket)) {
+						const distributionId = serverEnv().CAP_CLOUDFRONT_DISTRIBUTION_ID;
+						if (distributionId) {
+							const cloudfront = new CloudFrontClient({
+								region: serverEnv().CAP_AWS_REGION || "us-east-1",
+								credentials: yield* Effect.map(
+									AwsCredentials,
+									(c) => c.credentials,
+								),
 							});
-							console.log(
-								`Revalidation triggered for videoId: ${videoIdFromFileKey}`,
+
+							const pathToInvalidate = "/" + fileKey;
+
+							yield* Effect.promise(() =>
+								cloudfront.send(
+									new CreateInvalidationCommand({
+										DistributionId: distributionId,
+										InvalidationBatch: {
+											CallerReference: `${Date.now()}`,
+											Paths: {
+												Quantity: 1,
+												Items: [pathToInvalidate],
+											},
+										},
+									}),
+								),
+							).pipe(
+								Effect.catchAll((e) =>
+									Effect.logError(
+										"Failed to create CloudFront invalidation:",
+										e,
+									),
+								),
+								Effect.withSpan("CloudFrontInvalidation"),
 							);
-						} catch (revalidateError) {
-							console.error("Failed to revalidate page:", revalidateError);
 						}
 					}
 
@@ -312,58 +470,112 @@ app.post(
 						success: true,
 						fileKey,
 					});
-				} catch (completeError) {
-					console.error("Failed to complete multipart upload:", completeError);
-					return c.json(
-						{
-							error: "Failed to complete multipart upload",
-							details:
-								completeError instanceof Error
-									? completeError.message
-									: String(completeError),
-							uploadId,
-							fileKey,
-							parts: formattedParts.length,
-						},
-						500,
-					);
-				}
-			} catch (s3Error) {
-				console.error("S3 operation failed:", s3Error);
-				throw new Error(
-					`S3 operation failed: ${
-						s3Error instanceof Error ? s3Error.message : "Unknown error"
-					}`,
+				}).pipe(
+					Effect.catchAllCause((completeError) => {
+						console.error(
+							"Failed to complete multipart upload:",
+							completeError,
+						);
+						return Effect.succeed(
+							c.json(
+								{
+									error: "Failed to complete multipart upload",
+									details:
+										completeError instanceof Error
+											? completeError.message
+											: String(completeError),
+									uploadId,
+									fileKey,
+									parts: formattedParts.length,
+								},
+								500,
+							),
+						);
+					}),
 				);
-			}
-		} catch (error) {
-			console.error("Error completing multipart upload", error);
-			return c.json(
-				{
-					error: "Error completing multipart upload",
-					details: error instanceof Error ? error.message : String(error),
-				},
-				500,
+			}).pipe(
+				Effect.catchAll((error) => {
+					console.error("Multipart upload failed:", error);
+
+					return Effect.succeed(
+						c.json(
+							{
+								error: "Error completing multipart upload",
+								details: error instanceof Error ? error.message : String(error),
+							},
+							500,
+						),
+					);
+				}),
 			);
-		}
+		}).pipe(
+			Effect.provide(makeCurrentUserLayer(user)),
+			provideOptionalAuth,
+			runPromiseAnyEnv,
+		);
 	},
 );
 
-async function getUserBucketWithClient(userId: string) {
-	const [customBucket] = await db()
-		.select()
-		.from(s3Buckets)
-		.where(eq(s3Buckets.ownerId, userId));
+app.post("/abort", abortRequestValidator, (c) => {
+	const { uploadId, ...body } = c.req.valid("json");
+	const user = c.get("user");
 
-	console.log("S3 bucket configuration:", {
-		hasEndpoint: !!customBucket?.endpoint,
-		endpoint: customBucket?.endpoint || "N/A",
-		region: customBucket?.region || "N/A",
-		hasAccessKey: !!customBucket?.accessKeyId,
-		hasSecretKey: !!customBucket?.secretAccessKey,
+	const fileKey = parseVideoIdOrFileKey(user.id, {
+		...body,
+		subpath: "result.mp4",
 	});
 
-	const bucket = await createBucketProvider(customBucket);
+	const videoIdFromFileKey = fileKey.split("/")[1];
+	const videoIdRaw = "videoId" in body ? body.videoId : videoIdFromFileKey;
+	if (!videoIdRaw) return c.text("Video id not found", 400);
+	const videoId = Video.VideoId.make(videoIdRaw);
 
-	return { bucket };
-}
+	return Effect.gen(function* () {
+		const repo = yield* VideosRepo;
+		const policy = yield* VideosPolicy;
+		const db = yield* Database;
+
+		const maybeVideo = yield* repo
+			.getById(videoId)
+			.pipe(Policy.withPolicy(policy.isOwner(videoId)));
+		if (Option.isNone(maybeVideo)) {
+			c.status(404);
+			return c.text(`Video '${encodeURIComponent(videoId)}' not found`);
+		}
+		const [video] = maybeVideo.value;
+
+		const [bucket] = yield* S3Buckets.getBucketAccess(video.bucketId);
+		type MultipartWithAbort = typeof bucket.multipart & {
+			abort: (
+				...args: Parameters<typeof bucket.multipart.complete>
+			) => ReturnType<typeof bucket.multipart.complete>;
+		};
+		const multipart = bucket.multipart as MultipartWithAbort;
+
+		console.log(`Aborting multipart upload ${uploadId} for key: ${fileKey}`);
+		yield* multipart.abort(fileKey, uploadId);
+
+		yield* db.use((db) =>
+			db.delete(Db.videoUploads).where(eq(Db.videoUploads.videoId, videoId)),
+		);
+
+		return c.json({ success: true, fileKey, uploadId });
+	}).pipe(
+		Effect.catchAll((error) => {
+			console.error("Failed to abort multipart upload:", error);
+
+			return Effect.succeed(
+				c.json(
+					{
+						error: "Failed to abort multipart upload",
+						details: error instanceof Error ? error.message : String(error),
+					},
+					500,
+				),
+			);
+		}),
+		Effect.provide(makeCurrentUserLayer(user)),
+		provideOptionalAuth,
+		runPromiseAnyEnv,
+	);
+});

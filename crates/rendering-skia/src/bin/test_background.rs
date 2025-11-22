@@ -69,7 +69,11 @@ fn test_color_background(
     for (color, name) in colors {
         let uniforms = SkiaProjectUniforms {
             output_size: (width, height),
-            background: BackgroundSource::Color { value: color },
+            background: BackgroundSource::Color {
+                value: color,
+                alpha: 255,
+            },
+            border: None,
         };
 
         let frame_data = FrameData {
@@ -133,6 +137,7 @@ fn test_gradient_background(
             to: [0, 0, 65535],   // Blue
             angle: 45,
         },
+        border: None,
     };
 
     let frame_data = FrameData {
@@ -197,6 +202,7 @@ fn test_gradient_angles(
                 to: [32768, 0, 65535],   // Purple
                 angle,
             },
+            border: None,
         };
 
         let frame_data = FrameData {
@@ -261,6 +267,7 @@ fn test_caching(
             to: [0, 0, 65535],
             angle: 90,
         },
+        border: None,
     };
 
     let frame_data = FrameData {
@@ -306,6 +313,7 @@ fn test_caching(
             to: [65535, 65535, 0],
             angle: 45,
         },
+        border: None,
     };
 
     let new_frame_data = FrameData {

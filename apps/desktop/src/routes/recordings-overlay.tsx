@@ -3,7 +3,7 @@ import Tooltip from "@corvu/tooltip";
 import { createElementBounds } from "@solid-primitives/bounds";
 import { makePersisted } from "@solid-primitives/storage";
 import { createMutation, createQuery } from "@tanstack/solid-query";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { Channel, convertFileSrc } from "@tauri-apps/api/core";
 import { cx } from "cva";
 import {
 	type Accessor,
@@ -30,9 +30,13 @@ import {
 	commands,
 	events,
 	type FramesRendered,
+	type UploadProgress,
 	type UploadResult,
 } from "~/utils/tauri";
+import IconCapEditor from "~icons/cap/editor";
+import IconCapUpload from "~icons/cap/upload";
 import IconLucideClock from "~icons/lucide/clock";
+import IconLucideEye from "~icons/lucide/eye";
 import { FPS, OUTPUT_SIZE } from "./editor/context";
 
 type MediaEntry = {
@@ -726,8 +730,8 @@ function createRecordingMutations(
 				}
 			}
 
-			const unlisten = await events.uploadProgress.listen((event) => {
-				console.log("Upload progress event:", event.payload);
+			const uploadChannel = new Channel<UploadProgress>((progress) => {
+				console.log("Upload progress:", progress);
 				setActionState(
 					produce((actionState) => {
 						if (
@@ -736,70 +740,64 @@ function createRecordingMutations(
 						)
 							return;
 
-						actionState.state.progress = Math.round(
-							event.payload.progress * 100,
-						);
+						actionState.state.progress = Math.round(progress.progress * 100);
 					}),
 				);
 			});
 
-			try {
-				let res: UploadResult;
-				if (isRecording) {
-					setActionState({
-						type: "upload",
-						state: { type: "rendering", state: { type: "starting" } },
-					});
+			let res: UploadResult;
+			if (isRecording) {
+				setActionState({
+					type: "upload",
+					state: { type: "rendering", state: { type: "starting" } },
+				});
 
-					const progress = createRenderProgressCallback(
-						"upload",
-						setActionState,
-					);
+				const progress = createRenderProgressCallback("upload", setActionState);
 
-					await exportWithDefaultSettings(progress);
+				await exportWithDefaultSettings(progress);
 
-					// Show quick progress animation for existing video
-					setActionState(
-						produce((s) => {
-							if (
-								s.type === "copy" &&
-								s.state.type === "rendering" &&
-								s.state.state.type === "rendering"
-							)
-								s.state.state.renderedFrames = s.state.state.totalFrames;
-						}),
-					);
+				// Show quick progress animation for existing video
+				setActionState(
+					produce((s) => {
+						if (
+							s.type === "copy" &&
+							s.state.type === "rendering" &&
+							s.state.state.type === "rendering"
+						)
+							s.state.state.renderedFrames = s.state.state.totalFrames;
+					}),
+				);
 
-					setActionState({
-						type: "upload",
-						state: { type: "uploading", progress: 0 },
-					});
+				setActionState({
+					type: "upload",
+					state: { type: "uploading", progress: 0 },
+				});
 
-					res = await commands.uploadExportedVideo(media.path, {
-						Initial: { pre_created_video: null },
-					});
-				} else {
-					setActionState({
-						type: "upload",
-						state: { type: "uploading", progress: 0 },
-					});
+				res = await commands.uploadExportedVideo(
+					media.path,
+					{ Initial: { pre_created_video: null } },
+					uploadChannel,
+					null,
+				);
+			} else {
+				setActionState({
+					type: "upload",
+					state: { type: "uploading", progress: 0 },
+				});
 
-					res = await commands.uploadScreenshot(media.path);
-				}
+				res = await commands.uploadScreenshot(media.path);
+			}
 
-				switch (res) {
-					case "NotAuthenticated":
-						throw new Error("Not authenticated");
-					case "PlanCheckFailed":
-						throw new Error("Plan check failed");
-					case "UpgradeRequired":
-						onEvent("upgradeRequired");
-						return;
-					default:
-						break;
-				}
-			} finally {
-				unlisten();
+			switch (res) {
+				case "NotAuthenticated":
+					throw new Error("Not authenticated");
+				case "PlanCheckFailed":
+					throw new Error("Plan check failed");
+				case "UpgradeRequired":
+					onEvent("upgradeRequired");
+					return;
+				default:
+					break;
 			}
 
 			setActionState({ type: "upload", state: { type: "link-copied" } });

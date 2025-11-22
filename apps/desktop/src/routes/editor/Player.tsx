@@ -7,7 +7,12 @@ import Tooltip from "~/components/Tooltip";
 import { captionsStore } from "~/store/captions";
 import { commands } from "~/utils/tauri";
 import AspectRatioSelect from "./AspectRatioSelect";
-import { FPS, OUTPUT_SIZE, useEditorContext } from "./context";
+import {
+	FPS,
+	OUTPUT_SIZE,
+	serializeProjectConfiguration,
+	useEditorContext,
+} from "./context";
 import { EditorButton, Slider } from "./ui";
 import { useEditorShortcuts } from "./useEditorShortcuts";
 import { formatTime } from "./utils";
@@ -68,7 +73,9 @@ export function Player() {
 					setProject(updatedProject);
 
 					// Save the updated project configuration
-					await commands.setProjectConfig(updatedProject);
+					await commands.setProjectConfig(
+						serializeProjectConfiguration(updatedProject),
+					);
 				}
 			}
 		}
@@ -97,7 +104,7 @@ export function Player() {
 		return total > 0 && total - editorState.playbackTime <= 0.1;
 	};
 
-	const cropDialogHandler = () => {
+	const cropDialogHandler = async () => {
 		const display = editorInstance.recordings.segments[0].display;
 		setDialog({
 			open: true,
@@ -112,6 +119,8 @@ export function Player() {
 				}),
 			},
 		});
+		await commands.stopPlayback();
+		setEditorState("playing", false);
 	};
 
 	createEffect(() => {
@@ -146,50 +155,57 @@ export function Player() {
 	};
 
 	// Register keyboard shortcuts in one place
-	useEditorShortcuts(
-		() => document.activeElement === document.body,
-		[
-			{
-				combo: "S",
-				handler: () =>
-					setEditorState(
-						"timeline",
-						"interactMode",
-						editorState.timeline.interactMode === "split" ? "seek" : "split",
-					),
-			},
-			{
-				combo: "Mod+=",
-				handler: () =>
-					editorState.timeline.transform.updateZoom(
-						editorState.timeline.transform.zoom / 1.1,
-						editorState.playbackTime,
-					),
-			},
-			{
-				combo: "Mod+-",
-				handler: () =>
-					editorState.timeline.transform.updateZoom(
-						editorState.timeline.transform.zoom * 1.1,
-						editorState.playbackTime,
-					),
-			},
-			{
-				combo: "Space",
-				handler: async () => {
-					const prevTime = editorState.previewTime;
+	useEditorShortcuts(() => {
+		const el = document.activeElement;
+		if (!el) return true;
+		const tagName = el.tagName.toLowerCase();
+		const isContentEditable = el.getAttribute("contenteditable") === "true";
+		return !(
+			tagName === "input" ||
+			tagName === "textarea" ||
+			isContentEditable
+		);
+	}, [
+		{
+			combo: "S",
+			handler: () =>
+				setEditorState(
+					"timeline",
+					"interactMode",
+					editorState.timeline.interactMode === "split" ? "seek" : "split",
+				),
+		},
+		{
+			combo: "Mod+=",
+			handler: () =>
+				editorState.timeline.transform.updateZoom(
+					editorState.timeline.transform.zoom / 1.1,
+					editorState.playbackTime,
+				),
+		},
+		{
+			combo: "Mod+-",
+			handler: () =>
+				editorState.timeline.transform.updateZoom(
+					editorState.timeline.transform.zoom * 1.1,
+					editorState.playbackTime,
+				),
+		},
+		{
+			combo: "Space",
+			handler: async () => {
+				const prevTime = editorState.previewTime;
 
-					if (!editorState.playing) {
-						if (prevTime !== null) setEditorState("playbackTime", prevTime);
+				if (!editorState.playing) {
+					if (prevTime !== null) setEditorState("playbackTime", prevTime);
 
-						await commands.seekTo(Math.floor(editorState.playbackTime * FPS));
-					}
+					await commands.seekTo(Math.floor(editorState.playbackTime * FPS));
+				}
 
-					await handlePlayPauseClick();
-				},
+				await handlePlayPauseClick();
 			},
-		],
-	);
+		},
+	]);
 
 	return (
 		<div class="flex flex-col flex-1 rounded-xl border bg-gray-1 dark:bg-gray-2 border-gray-3">
@@ -197,7 +213,7 @@ export function Player() {
 				<AspectRatioSelect />
 				<EditorButton
 					tooltipText="Crop Video"
-					onClick={() => cropDialogHandler()}
+					onClick={cropDialogHandler}
 					leftIcon={<IconCapCrop class="w-5 text-gray-12" />}
 				>
 					Crop
@@ -329,6 +345,18 @@ export function Player() {
 	);
 }
 
+// CSS for checkerboard grid (adaptive to light/dark mode)
+const gridStyle = {
+	"background-image":
+		"linear-gradient(45deg, rgba(128,128,128,0.12) 25%, transparent 25%), " +
+		"linear-gradient(-45deg, rgba(128,128,128,0.12) 25%, transparent 25%), " +
+		"linear-gradient(45deg, transparent 75%, rgba(128,128,128,0.12) 75%), " +
+		"linear-gradient(-45deg, transparent 75%, rgba(128,128,128,0.12) 75%)",
+	"background-size": "40px 40px",
+	"background-position": "0 0, 0 20px, 20px -20px, -20px 0px",
+	"background-color": "rgba(200,200,200,0.08)",
+};
+
 function PreviewCanvas() {
 	const { latestFrame } = useEditorContext();
 
@@ -354,36 +382,42 @@ function PreviewCanvas() {
 			<Show when={latestFrame()}>
 				{(currentFrame) => {
 					const padding = 4;
+					const frameWidth = () => currentFrame().width;
+					const frameHeight = () => currentFrame().data.height;
+
+					const availableWidth = () =>
+						Math.max((containerBounds.width ?? 0) - padding * 2, 0);
+					const availableHeight = () =>
+						Math.max((containerBounds.height ?? 0) - padding * 2, 0);
 
 					const containerAspect = () => {
-						if (containerBounds.width && containerBounds.height) {
-							return (
-								(containerBounds.width - padding * 2) /
-								(containerBounds.height - padding * 2)
-							);
-						}
-
-						return 1;
+						const width = availableWidth();
+						const height = availableHeight();
+						if (width === 0 || height === 0) return 1;
+						return width / height;
 					};
 
-					const frameAspect = () =>
-						currentFrame().width / currentFrame().data.height;
+					const frameAspect = () => {
+						const width = frameWidth();
+						const height = frameHeight();
+						if (width === 0 || height === 0) return containerAspect();
+						return width / height;
+					};
 
 					const size = () => {
+						let width: number;
+						let height: number;
 						if (frameAspect() < containerAspect()) {
-							const height = (containerBounds.height ?? 0) - padding * 1;
-
-							return {
-								width: height * frameAspect(),
-								height,
-							};
+							height = availableHeight();
+							width = height * frameAspect();
+						} else {
+							width = availableWidth();
+							height = width / frameAspect();
 						}
 
-						const width = (containerBounds.width ?? 0) - padding * 2;
-
 						return {
-							width,
-							height: width / frameAspect(),
+							width: Math.min(width, frameWidth()),
+							height: Math.min(height, frameHeight()),
 						};
 					};
 
@@ -391,14 +425,15 @@ function PreviewCanvas() {
 						<div class="flex overflow-hidden absolute inset-0 justify-center items-center h-full">
 							<canvas
 								style={{
-									width: `${size().width - padding * 2}px`,
+									width: `${size().width}px`,
 									height: `${size().height}px`,
+									...gridStyle,
 								}}
-								class="bg-blue-50 rounded"
+								class="rounded"
 								ref={canvasRef}
 								id="canvas"
-								width={currentFrame().width}
-								height={currentFrame().data.height}
+								width={frameWidth()}
+								height={frameHeight()}
 							/>
 						</div>
 					);

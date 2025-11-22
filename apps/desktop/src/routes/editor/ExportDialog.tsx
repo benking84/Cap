@@ -6,6 +6,8 @@ import {
 	createQuery,
 	keepPreviousData,
 } from "@tanstack/solid-query";
+import { Channel } from "@tauri-apps/api/core";
+import { CheckMenuItem, Menu } from "@tauri-apps/api/menu";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { cx } from "cva";
 import {
@@ -15,24 +17,28 @@ import {
 	For,
 	type JSX,
 	Match,
+	mergeProps,
 	on,
 	Show,
+	Suspense,
 	Switch,
 	type ValidComponent,
 } from "solid-js";
 import { createStore, produce, reconcile } from "solid-js/store";
 import toast from "solid-toast";
 import { SignInButton } from "~/components/SignInButton";
+import Tooltip from "~/components/Tooltip";
 import { authStore } from "~/store";
 import { trackEvent } from "~/utils/analytics";
 import { createSignInMutation } from "~/utils/auth";
 import { exportVideo } from "~/utils/export";
+import { createOrganizationsQuery } from "~/utils/queries";
 import {
 	commands,
 	type ExportCompression,
 	type ExportSettings,
-	events,
 	type FramesRendered,
+	type UploadProgress,
 } from "~/utils/tauri";
 import { type RenderState, useEditorContext } from "./context";
 import { RESOLUTION_OPTIONS } from "./Header";
@@ -44,6 +50,8 @@ import {
 	PopperContent,
 	topSlideAnimateClasses,
 } from "./ui";
+
+class SilentError extends Error {}
 
 export const COMPRESSION_OPTIONS: Array<{
 	label: string;
@@ -89,7 +97,7 @@ export const EXPORT_TO_OPTIONS = [
 
 type ExportFormat = ExportSettings["format"];
 
-export const FORMAT_OPTIONS = [
+const FORMAT_OPTIONS = [
 	{ label: "MP4", value: "Mp4" },
 	{ label: "GIF", value: "Gif" },
 ] as { label: string; value: ExportFormat; disabled?: boolean }[];
@@ -102,6 +110,7 @@ interface Settings {
 	exportTo: ExportToOption;
 	resolution: { label: string; value: string; width: number; height: number };
 	compression: ExportCompression;
+	organizationId?: string | null;
 }
 export function ExportDialog() {
 	const {
@@ -115,8 +124,19 @@ export function ExportDialog() {
 	} = useEditorContext();
 
 	const auth = authStore.createQuery();
+	const organisations = createOrganizationsQuery();
 
-	const [settings, setSettings] = makePersisted(
+	const hasTransparentBackground = () => {
+		const backgroundSource =
+			editorInstance.savedProjectConfig.background.source;
+		return (
+			backgroundSource.type === "color" &&
+			backgroundSource.alpha !== undefined &&
+			backgroundSource.alpha < 255
+		);
+	};
+
+	const [_settings, setSettings] = makePersisted(
 		createStore<Settings>({
 			format: "Mp4",
 			fps: 30,
@@ -127,7 +147,26 @@ export function ExportDialog() {
 		{ name: "export_settings" },
 	);
 
-	if (!["Mp4", "Gif"].includes(settings.format)) setSettings("format", "Mp4");
+	const settings = mergeProps(_settings, () => {
+		const ret: Partial<Settings> = {};
+		if (hasTransparentBackground() && _settings.format === "Mp4")
+			ret.format = "Gif";
+		// Ensure GIF is not selected when exportTo is "link"
+		else if (_settings.format === "Gif" && _settings.exportTo === "link")
+			ret.format = "Mp4";
+		else if (!["Mp4", "Gif"].includes(_settings.format)) ret.format = "Mp4";
+
+		Object.defineProperty(ret, "organizationId", {
+			get() {
+				if (!_settings.organizationId && organisations().length > 0)
+					return organisations()[0].id;
+
+				return _settings.organizationId;
+			},
+		});
+
+		return ret;
+	});
 
 	const exportWithSettings = (onProgress: (progress: FramesRendered) => void) =>
 		exportVideo(
@@ -155,8 +194,6 @@ export function ExportDialog() {
 		);
 
 	const [outputPath, setOutputPath] = createSignal<string | null>(null);
-
-	const selectedStyle = "bg-gray-7";
 
 	const projectPath = editorInstance.path;
 
@@ -317,46 +354,52 @@ export function ExportDialog() {
 			if (!canShare.allowed) {
 				if (canShare.reason === "upgrade_required") {
 					await commands.showWindow("Upgrade");
-					throw new Error(
-						"Upgrade required to share recordings longer than 5 minutes",
-					);
+					// The window takes a little to show and this prevents the user seeing it glitch
+					await new Promise((resolve) => setTimeout(resolve, 1000));
+					throw new SilentError();
 				}
 			}
 
-			const unlisten = await events.uploadProgress.listen((event) => {
-				console.log("Upload progress event:", event.payload);
+			const uploadChannel = new Channel<UploadProgress>((progress) => {
+				console.log("Upload progress:", progress);
 				setExportState(
 					produce((state) => {
 						if (state.type !== "uploading") return;
 
-						state.progress = Math.round(event.payload.progress * 100);
+						state.progress = Math.round(progress.progress * 100);
 					}),
 				);
 			});
 
-			try {
-				await exportWithSettings((progress) =>
-					setExportState({ type: "rendering", progress }),
-				);
+			await exportWithSettings((progress) =>
+				setExportState({ type: "rendering", progress }),
+			);
 
-				setExportState({ type: "uploading", progress: 0 });
+			setExportState({ type: "uploading", progress: 0 });
 
-				// Now proceed with upload
-				const result = meta().sharing
-					? await commands.uploadExportedVideo(projectPath, "Reupload")
-					: await commands.uploadExportedVideo(projectPath, {
-							Initial: { pre_created_video: null },
-						});
+			console.log({ organizationId: settings.organizationId });
 
-				if (result === "NotAuthenticated")
-					throw new Error("You need to sign in to share recordings");
-				else if (result === "PlanCheckFailed")
-					throw new Error("Failed to verify your subscription status");
-				else if (result === "UpgradeRequired")
-					throw new Error("This feature requires an upgraded plan");
-			} finally {
-				unlisten();
-			}
+			// Now proceed with upload
+			const result = meta().sharing
+				? await commands.uploadExportedVideo(
+						projectPath,
+						"Reupload",
+						uploadChannel,
+						settings.organizationId ?? null,
+					)
+				: await commands.uploadExportedVideo(
+						projectPath,
+						{ Initial: { pre_created_video: null } },
+						uploadChannel,
+						settings.organizationId ?? null,
+					);
+
+			if (result === "NotAuthenticated")
+				throw new Error("You need to sign in to share recordings");
+			else if (result === "PlanCheckFailed")
+				throw new Error("Failed to verify your subscription status");
+			else if (result === "UpgradeRequired")
+				throw new Error("This feature requires an upgraded plan");
 		},
 		onSuccess: async () => {
 			const d = dialog();
@@ -370,9 +413,11 @@ export function ExportDialog() {
 		},
 		onError: (error) => {
 			console.error(error);
-			commands.globalMessageDialog(
-				error instanceof Error ? error.message : "Failed to upload recording",
-			);
+			if (!(error instanceof SilentError)) {
+				commands.globalMessageDialog(
+					error instanceof Error ? error.message : "Failed to upload recording",
+				);
+			}
 
 			setExportState(reconcile({ type: "idle" }));
 		},
@@ -405,14 +450,14 @@ export function ExportDialog() {
 						)
 					}
 					leftFooterContent={
-						<div>
-							<Show when={exportEstimates.data}>
-								{(est) => (
-									<div
-										class={cx(
-											"flex overflow-hidden z-40 justify-between items-center max-w-full text-xs font-medium transition-all pointer-events-none",
-										)}
-									>
+						<div
+							class={cx(
+								"flex overflow-hidden z-40 justify-between items-center max-w-full text-xs font-medium transition-all pointer-events-none",
+							)}
+						>
+							<Suspense>
+								<Show when={exportEstimates.data}>
+									{(est) => (
 										<p class="flex gap-4 items-center">
 											<span class="flex items-center text-gray-12">
 												<IconCapCamera class="w-[14px] h-[14px] mr-1.5 text-gray-12" />
@@ -471,9 +516,9 @@ export function ExportDialog() {
 												})()}
 											</span>
 										</p>
-									</div>
-								)}
-							</Show>
+									)}
+								</Show>
+							</Suspense>
 						</div>
 					}
 				>
@@ -481,12 +526,67 @@ export function ExportDialog() {
 						{/* Export to */}
 						<div class="flex-1 p-4 rounded-xl dark:bg-gray-2 bg-gray-3">
 							<div class="flex flex-col gap-3">
-								<h3 class="text-gray-12">Export to</h3>
+								<div class="flex flex-row justify-between items-center">
+									<h3 class="text-gray-12">Export to</h3>
+									<Suspense>
+										<Show
+											when={
+												settings.exportTo === "link" &&
+												organisations().length > 1
+											}
+										>
+											<div
+												class="text-sm text-gray-12 flex flex-row hover:opacity-60 transition-opacity duration-200"
+												onClick={async () => {
+													const menu = await Menu.new({
+														items: await Promise.all(
+															organisations().map((org) =>
+																CheckMenuItem.new({
+																	text: org.name,
+																	action: () => {
+																		setSettings("organizationId", org.id);
+																	},
+																	checked: settings.organizationId === org.id,
+																}),
+															),
+														),
+													});
+													menu.popup();
+												}}
+											>
+												<span class="opacity-70">Organization:</span>
+												<span class="ml-1 flex flex-row ">
+													{
+														(
+															organisations().find(
+																(o) => o.id === settings.organizationId,
+															) ?? organisations()[0]
+														)?.name
+													}
+													<IconCapChevronDown />
+												</span>
+											</div>
+										</Show>
+									</Suspense>
+								</div>
 								<div class="flex gap-2">
 									<For each={EXPORT_TO_OPTIONS}>
 										{(option) => (
 											<Button
-												onClick={() => setSettings("exportTo", option.value)}
+												onClick={() => {
+													setSettings(
+														produce((newSettings) => {
+															newSettings.exportTo = option.value;
+															// If switching to link and GIF is selected, change to MP4
+															if (
+																option.value === "link" &&
+																settings.format === "Gif"
+															) {
+																newSettings.format = "Mp4";
+															}
+														}),
+													);
+												}}
 												data-selected={settings.exportTo === option.value}
 												class="flex flex-1 gap-2 items-center text-nowrap"
 												variant="gray"
@@ -505,49 +605,71 @@ export function ExportDialog() {
 								<h3 class="text-gray-12">Format</h3>
 								<div class="flex flex-row gap-2">
 									<For each={FORMAT_OPTIONS}>
-										{(option) => (
-											<Button
-												variant="gray"
-												onClick={() => {
-													setSettings(
-														produce((newSettings) => {
-															newSettings.format = option.value as ExportFormat;
+										{(option) => {
+											const disabledReason = () => {
+												if (
+													option.value === "Mp4" &&
+													hasTransparentBackground()
+												)
+													return "MP4 format does not support transparent backgrounds";
+												if (
+													option.value === "Gif" &&
+													settings.exportTo === "link"
+												)
+													return "Shareable links cannot be made from GIFs";
+											};
 
-															if (
-																option.value === "Gif" &&
-																!(
-																	settings.resolution.value === "720p" ||
-																	settings.resolution.value === "1080p"
-																)
-															)
-																newSettings.resolution = {
-																	...RESOLUTION_OPTIONS._720p,
-																};
+											return (
+												<Tooltip
+													content={disabledReason()}
+													disabled={disabledReason() === undefined}
+												>
+													<Button
+														variant="gray"
+														onClick={() => {
+															setSettings(
+																produce((newSettings) => {
+																	newSettings.format =
+																		option.value as ExportFormat;
 
-															if (
-																option.value === "Gif" &&
-																GIF_FPS_OPTIONS.every(
-																	(v) => v.value === settings.fps,
-																)
-															)
-																newSettings.fps = 15;
+																	if (
+																		option.value === "Gif" &&
+																		!(
+																			settings.resolution.value === "720p" ||
+																			settings.resolution.value === "1080p"
+																		)
+																	)
+																		newSettings.resolution = {
+																			...RESOLUTION_OPTIONS._720p,
+																		};
 
-															if (
-																option.value === "Mp4" &&
-																FPS_OPTIONS.every(
-																	(v) => v.value !== settings.fps,
-																)
-															)
-																newSettings.fps = 30;
-														}),
-													);
-												}}
-												autofocus={false}
-												data-selected={settings.format === option.value}
-											>
-												{option.label}
-											</Button>
-										)}
+																	if (
+																		option.value === "Gif" &&
+																		GIF_FPS_OPTIONS.every(
+																			(v) => v.value !== settings.fps,
+																		)
+																	)
+																		newSettings.fps = 15;
+
+																	if (
+																		option.value === "Mp4" &&
+																		FPS_OPTIONS.every(
+																			(v) => v.value !== settings.fps,
+																		)
+																	)
+																		newSettings.fps = 30;
+																}),
+															);
+														}}
+														autofocus={false}
+														data-selected={settings.format === option.value}
+														disabled={!!disabledReason()}
+													>
+														{option.label}
+													</Button>
+												</Tooltip>
+											);
+										}}
 									</For>
 								</div>
 							</div>
@@ -882,7 +1004,7 @@ export function ExportDialog() {
 								>
 									<div class="relative">
 										<a
-											href={meta().sharing!.link}
+											href={meta().sharing?.link}
 											target="_blank"
 											rel="noreferrer"
 											class="block"
@@ -893,7 +1015,7 @@ export function ExportDialog() {
 													setTimeout(() => {
 														setCopyPressed(false);
 													}, 2000);
-													navigator.clipboard.writeText(meta().sharing!.link!);
+													navigator.clipboard.writeText(meta().sharing?.link!);
 												}}
 												variant="dark"
 												class="flex gap-2 justify-center items-center"

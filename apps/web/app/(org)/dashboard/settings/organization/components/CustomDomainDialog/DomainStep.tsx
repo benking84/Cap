@@ -19,7 +19,7 @@ const DomainStep = ({
 	onClearError,
 	submitLoading,
 }: DomainStepProps) => {
-	const { isSubscribed } = useDashboardContext();
+	const { user } = useDashboardContext();
 	const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		setDomain(e.target.value);
 		if (error) {
@@ -32,16 +32,17 @@ const DomainStep = ({
 			<div className="text-center">
 				<h3 className="text-lg font-semibold text-gray-12">Your domain</h3>
 				<p className="text-sm text-gray-11">
-					Enter the custom domain you'd like to use
+					Enter the custom domain you'd like to use e.g.{" "}
+					<span className="font-medium text-gray-12">caps.yourdomain.com</span>
 				</p>
 			</div>
 			<div className="space-y-3">
 				<Input
 					type="text"
 					id="customDomain"
-					placeholder="your-domain.com"
+					placeholder="caps.yourdomain.com"
 					value={domain}
-					disabled={!isSubscribed || submitLoading}
+					disabled={!user.isPro || submitLoading}
 					className={clsx(
 						"max-w-[400px] mx-auto",
 						error && "border-red-500 focus:border-red-500",

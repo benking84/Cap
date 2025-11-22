@@ -7,6 +7,7 @@ license = "MIT"
 [dependencies]
 tracing.workspace = true
 thiserror.workspace = true
+workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 [target.'cfg(windows)'.dependencies]
 windows-core = { workspace = true }
@@ -17,6 +18,7 @@ windows = { workspace = true, features = [
 	"Win32_System_Com_StructuredStorage",
 	"Win32_System_Ole",
 	"Win32_System_Variant",
+	"Win32_System_Performance",
 	"Win32_Media_KernelStreaming",
 ] }
 

@@ -1,3 +1,5 @@
+"use client";
+
 import type { VideoMetadata } from "@cap/database/types";
 import type { Video } from "@cap/web-domain";
 import { faBuilding, faUser } from "@fortawesome/free-solid-svg-icons";
@@ -14,6 +16,7 @@ interface SharedCapCardProps {
 		totalReactions: number;
 		ownerName: string | null;
 		metadata?: VideoMetadata;
+		hasActiveUpload: boolean | undefined;
 	};
 	analytics: number;
 	isLoadingAnalytics: boolean;
@@ -49,7 +52,6 @@ export const SharedCapCard: React.FC<SharedCapCardProps> = ({
 				isLoadingAnalytics={isLoadingAnalytics}
 				cap={cap}
 				analytics={displayCount}
-				sharedCapCard
 				userId={userId}
 			>
 				<div className="mb-2 space-y-1">

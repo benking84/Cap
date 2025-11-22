@@ -62,7 +62,7 @@ impl DisplayLayer {
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            &segment_frames.screen_frame,
+            segment_frames.screen_frame.data(),
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(frame_size.x * 4),
@@ -75,7 +75,8 @@ impl DisplayLayer {
             },
         );
 
-        queue.write_buffer(&self.uniforms_buffer, 0, bytemuck::cast_slice(&[uniforms]));
+        // Update existing uniform buffer in place; bind group remains valid.
+        uniforms.write_to_buffer(queue, &self.uniforms_buffer);
     }
 
     pub fn render(&self, pass: &mut wgpu::RenderPass<'_>) {

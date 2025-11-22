@@ -7,6 +7,7 @@ license = "MIT"
 [dependencies]
 tracing.workspace = true
 thiserror.workspace = true
+workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 [target.'cfg(windows)'.dependencies]
 cap-mediafoundation-utils = { path = "../mediafoundation-utils" }
@@ -15,6 +16,8 @@ windows = { workspace = true, features = [
     "Win32_Media_MediaFoundation",
     "Win32_Media_DirectShow",
     "Win32_System_Com",
+    "Win32_System_WinRT",
+    "Win32_System_Performance",
 ] }
 
 [dev-dependencies]

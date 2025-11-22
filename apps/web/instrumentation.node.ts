@@ -8,16 +8,14 @@ import {
 	PutBucketPolicyCommand,
 	S3Client,
 } from "@aws-sdk/client-s3";
-import { db } from "@cap/database";
+import { migrateDb } from "@cap/database/migrate";
 import { buildEnv, serverEnv } from "@cap/env";
-import { migrate } from "drizzle-orm/mysql2/migrator";
-import path from "path";
 
 export async function register() {
-	console.log("Waiting 5 seconds to run migrations");
+	console.log("⏳ Waiting 30 seconds to run migrations (allowing Cloud SQL Proxy to initialize)");
 
 	// Function to trigger migrations with retry logic
-	const triggerMigrations = async (retryCount = 0, maxRetries = 3) => {
+	const triggerMigrations = async (retryCount = 0, maxRetries = 5) => {
 		try {
 			await runMigrations();
 		} catch (error) {
@@ -26,26 +24,30 @@ export async function register() {
 				error,
 			);
 			if (retryCount < maxRetries - 1) {
+				const waitTime = Math.min(15000 * (retryCount + 1), 60000); // Exponential backoff up to 60s
 				console.log(
-					`🔄 Retrying in 5 seconds... (${retryCount + 1}/${maxRetries})`,
+					`🔄 Retrying in ${waitTime / 1000} seconds... (${retryCount + 1}/${maxRetries})`,
 				);
-				setTimeout(() => triggerMigrations(retryCount + 1, maxRetries), 5000);
+				setTimeout(() => triggerMigrations(retryCount + 1, maxRetries), waitTime);
 			} else {
 				console.error(`🚨 All ${maxRetries} migration attempts failed.`);
-				process.exit(1); // Exit with error code if all attempts fail
+				console.error(`💡 Check Cloud SQL connectivity and VPC configuration`);
+				console.error(`⚠️  Service will continue running, but migrations may need to be run manually.`);
+				// DO NOT exit - let the service continue running
 			}
 		}
 	};
 
-	// Add a timeout to trigger migrations after 5 seconds on server start
-	setTimeout(() => triggerMigrations(), 5000);
+	// Add a timeout to trigger migrations after 30 seconds on server start
+	// This gives Cloud SQL Proxy more time to establish connection
+	setTimeout(() => triggerMigrations(), 30000);
 
-	setTimeout(() => createS3Bucket(), 5000);
+	setTimeout(() => createS3Bucket(), 30000);
 }
 
 async function createS3Bucket() {
 	const s3Client = new S3Client({
-		endpoint: serverEnv().CAP_AWS_ENDPOINT,
+		endpoint: serverEnv().S3_INTERNAL_ENDPOINT,
 		region: serverEnv().CAP_AWS_REGION,
 		credentials: {
 			accessKeyId: serverEnv().CAP_AWS_ACCESS_KEY ?? "",
@@ -93,9 +95,8 @@ async function runMigrations() {
 			console.log("🔍 DB migrations triggered");
 			console.log("💿 Running DB migrations...");
 
-			await migrate(db() as any, {
-				migrationsFolder: path.join(process.cwd(), "/migrations"),
-			});
+			await migrateDb();
+
 			console.log("💿 Migrations run successfully!");
 		} catch (error) {
 			console.error("🚨 MIGRATION_FAILED", { error });

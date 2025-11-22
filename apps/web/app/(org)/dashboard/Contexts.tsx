@@ -1,28 +1,36 @@
 "use client";
 
-import type { users } from "@cap/database/schema";
 import { buildEnv } from "@cap/env";
 import Cookies from "js-cookie";
-import { usePathname } from "next/navigation";
+import { redirect, usePathname } from "next/navigation";
 import { createContext, useContext, useEffect, useState } from "react";
+import { type CurrentUser, useCurrentUser } from "@/app/Layout/AuthContext";
 import { UpgradeModal } from "@/components/UpgradeModal";
-import type { Organization, Spaces, UserPreferences } from "./dashboard-data";
+import type {
+	Organization,
+	OrganizationSettings,
+	Spaces,
+	UserPreferences,
+} from "./dashboard-data";
 
 type SharedContext = {
 	organizationData: Organization[] | null;
 	activeOrganization: Organization | null;
+	organizationSettings: OrganizationSettings | null;
 	spacesData: Spaces[] | null;
 	userSpaces: Spaces[] | null;
 	sharedSpaces: Spaces[] | null;
 	activeSpace: Spaces | null;
-	user: typeof users.$inferSelect;
-	isSubscribed: boolean;
+	user: CurrentUser;
+	userCapsCount: number | null;
 	toggleSidebarCollapsed: () => void;
 	anyNewNotifications: boolean;
 	userPreferences: UserPreferences;
 	sidebarCollapsed: boolean;
 	upgradeModalOpen: boolean;
 	setUpgradeModalOpen: (open: boolean) => void;
+	referClickedState: boolean;
+	setReferClickedStateHandler: (referClicked: boolean) => void;
 };
 
 type ITheme = "light" | "dark";
@@ -46,29 +54,35 @@ export function DashboardContexts({
 	organizationData,
 	activeOrganization,
 	spacesData,
-	user,
-	isSubscribed,
+	userCapsCount,
+	organizationSettings,
 	userPreferences,
 	anyNewNotifications,
 	initialTheme,
 	initialSidebarCollapsed,
+	referClicked,
 }: {
 	children: React.ReactNode;
 	organizationData: SharedContext["organizationData"];
 	activeOrganization: SharedContext["activeOrganization"];
 	spacesData: SharedContext["spacesData"];
-	user: SharedContext["user"];
-	isSubscribed: SharedContext["isSubscribed"];
+	userCapsCount: SharedContext["userCapsCount"];
+	organizationSettings: SharedContext["organizationSettings"];
 	userPreferences: SharedContext["userPreferences"];
 	anyNewNotifications: boolean;
 	initialTheme: ITheme;
 	initialSidebarCollapsed: boolean;
+	referClicked: boolean;
 }) {
+	const user = useCurrentUser();
+	if (!user) redirect("/login");
+
 	const [theme, setTheme] = useState<ITheme>(initialTheme);
 	const [sidebarCollapsed, setSidebarCollapsed] = useState(
 		initialSidebarCollapsed,
 	);
 	const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+	const [referClickedState, setReferClickedState] = useState(referClicked);
 	const pathname = usePathname();
 
 	// Calculate user's spaces (both owned and member of)
@@ -89,7 +103,7 @@ export function DashboardContexts({
 				(member) =>
 					member.userId === user.id &&
 					member.organizationId === space.organizationId &&
-					member.role === "MEMBER",
+					member.role === "member",
 			),
 		) || null;
 
@@ -125,9 +139,17 @@ export function DashboardContexts({
 			document.body.className = "light";
 		};
 	}, [theme]);
+
 	const toggleSidebarCollapsed = () => {
 		setSidebarCollapsed(!sidebarCollapsed);
 		Cookies.set("sidebarCollapsed", !sidebarCollapsed ? "true" : "false", {
+			expires: 365,
+		});
+	};
+
+	const setReferClickedStateHandler = (referClicked: boolean) => {
+		setReferClickedState(referClicked);
+		Cookies.set("referClicked", referClicked ? "true" : "false", {
 			expires: 365,
 		});
 	};
@@ -139,17 +161,20 @@ export function DashboardContexts({
 					organizationData,
 					activeOrganization,
 					spacesData,
+					userCapsCount,
 					anyNewNotifications,
 					userPreferences,
+					organizationSettings,
 					userSpaces,
 					sharedSpaces,
 					activeSpace,
 					user,
-					isSubscribed,
 					toggleSidebarCollapsed,
 					sidebarCollapsed,
 					upgradeModalOpen,
 					setUpgradeModalOpen,
+					referClickedState,
+					setReferClickedStateHandler,
 				}}
 			>
 				{children}

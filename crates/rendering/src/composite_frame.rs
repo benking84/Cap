@@ -15,18 +15,25 @@ pub struct CompositeVideoFrameUniforms {
     pub target_bounds: [f32; 4],
     pub output_size: [f32; 2],
     pub frame_size: [f32; 2],
-    pub velocity_uv: [f32; 2],
+    pub motion_blur_vector: [f32; 2],
+    pub motion_blur_zoom_center: [f32; 2],
+    pub motion_blur_params: [f32; 4],
     pub target_size: [f32; 2],
     pub rounding_px: f32,
+    pub rounding_type: f32,
     pub mirror_x: f32,
-    pub motion_blur_amount: f32,
-    pub camera_motion_blur_amount: f32,
     pub shadow: f32,
     pub shadow_size: f32,
     pub shadow_opacity: f32,
     pub shadow_blur: f32,
     pub opacity: f32,
-    pub _padding: [f32; 3],
+    pub border_enabled: f32,
+    pub border_width: f32,
+    pub _padding0: f32,
+    pub _padding1: [f32; 2],
+    pub _padding1b: [f32; 2],
+    pub border_color: [f32; 4],
+    pub _padding2: [f32; 4],
 }
 
 impl Default for CompositeVideoFrameUniforms {
@@ -36,18 +43,25 @@ impl Default for CompositeVideoFrameUniforms {
             target_bounds: Default::default(),
             output_size: Default::default(),
             frame_size: Default::default(),
-            velocity_uv: Default::default(),
+            motion_blur_vector: Default::default(),
+            motion_blur_zoom_center: [0.5, 0.5],
+            motion_blur_params: Default::default(),
             target_size: Default::default(),
             rounding_px: Default::default(),
+            rounding_type: 0.0,
             mirror_x: Default::default(),
-            motion_blur_amount: Default::default(),
-            camera_motion_blur_amount: Default::default(),
             shadow: Default::default(),
             shadow_size: Default::default(),
             shadow_opacity: Default::default(),
             shadow_blur: Default::default(),
             opacity: 1.0,
-            _padding: Default::default(),
+            border_enabled: 0.0,
+            border_width: 5.0,
+            _padding0: 0.0,
+            _padding1: [0.0; 2],
+            _padding1b: [0.0; 2],
+            border_color: [1.0, 1.0, 1.0, 0.8],
+            _padding2: [0.0; 4],
         }
     }
 }
@@ -61,6 +75,10 @@ impl CompositeVideoFrameUniforms {
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             }),
         )
+    }
+
+    pub fn write_to_buffer(&self, queue: &wgpu::Queue, buffer: &wgpu::Buffer) {
+        queue.write_buffer(buffer, 0, bytemuck::bytes_of(self));
     }
 }
 

@@ -7,8 +7,8 @@ edition = "2024"
 ffmpeg.workspace = true
 thiserror.workspace = true
 cpal.workspace = true
+workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
-cap-ffmpeg-utils = { path = "../ffmpeg-utils" }
 
 [lints]
 workspace = true

@@ -8,10 +8,12 @@ import {
 	organizations,
 	users,
 } from "@cap/database/schema";
-import { serverEnv } from "@cap/env";
+import { S3Buckets } from "@cap/web-backend";
+import { ImageUpload, Organisation, type User } from "@cap/web-domain";
 import { eq } from "drizzle-orm";
+import { Effect, Option } from "effect";
 import { revalidatePath } from "next/cache";
-import { createBucketProvider } from "@/utils/s3";
+import { runPromise } from "@/lib/server";
 
 export async function createOrganization(formData: FormData) {
 	const user = await getCurrentUser();
@@ -32,14 +34,14 @@ export async function createOrganization(formData: FormData) {
 		throw new Error("Organization with this name already exists");
 	}
 
-	const organizationId = nanoId();
+	const organizationId = Organisation.OrganisationId.make(nanoId());
 
 	// Create the organization first
 	const orgValues: {
-		id: string;
-		ownerId: string;
+		id: Organisation.OrganisationId;
+		ownerId: User.UserId;
 		name: string;
-		iconUrl?: string;
+		iconUrl?: ImageUpload.ImageUrlOrKey;
 	} = {
 		id: organizationId,
 		ownerId: user.id,
@@ -61,32 +63,22 @@ export async function createOrganization(formData: FormData) {
 
 		// Create a unique file key
 		const fileExtension = iconFile.name.split(".").pop();
-		const fileKey = `organizations/${organizationId}/icon-${Date.now()}.${fileExtension}`;
+		const fileKey = ImageUpload.ImageKey.make(
+			`organizations/${organizationId}/icon-${Date.now()}.${fileExtension}`,
+		);
 
 		try {
-			const bucket = await createBucketProvider();
+			await Effect.gen(function* () {
+				const [bucket] = yield* S3Buckets.getBucketAccess(Option.none());
 
-			await bucket.putObject(fileKey, await iconFile.bytes(), {
-				contentType: iconFile.type,
-			});
+				yield* bucket.putObject(
+					fileKey,
+					yield* Effect.promise(() => iconFile.arrayBuffer()),
+					{ contentType: iconFile.type },
+				);
+			}).pipe(runPromise);
 
-			// Construct the icon URL
-			let iconUrl;
-			if (serverEnv().CAP_AWS_BUCKET_URL) {
-				// If a custom bucket URL is defined, use it
-				iconUrl = `${serverEnv().CAP_AWS_BUCKET_URL}/${fileKey}`;
-			} else if (serverEnv().CAP_AWS_ENDPOINT) {
-				// For custom endpoints like MinIO
-				iconUrl = `${serverEnv().CAP_AWS_ENDPOINT}/${bucket.name}/${fileKey}`;
-			} else {
-				// Default AWS S3 URL format
-				iconUrl = `https://${bucket.name}.s3.${
-					serverEnv().CAP_AWS_REGION || "us-east-1"
-				}.amazonaws.com/${fileKey}`;
-			}
-
-			// Add the icon URL to the organization values
-			orgValues.iconUrl = iconUrl;
+			orgValues.iconUrl = fileKey;
 		} catch (error) {
 			console.error("Error uploading organization icon:", error);
 			throw new Error(error instanceof Error ? error.message : "Upload failed");

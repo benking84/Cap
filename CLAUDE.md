@@ -17,7 +17,6 @@ Cap is the open source alternative to Loom. It's a Turborepo monorepo with a Tau
 ### Core Applications
 - `apps/web/` — Next.js web application (sharing, management, dashboard)
 - `apps/desktop/` — Tauri desktop app (recording, editing)
-- `apps/tasks/` — Background job processing service
 - `apps/discord-bot/` — Discord integration bot
 - `apps/storybook/` — UI component documentation
 
@@ -171,7 +170,7 @@ import { getCurrentUser } from "@cap/database/auth/session";
 export async function updateVideo(data: FormData) {
   const user = await getCurrentUser();
   if (!user?.id) throw new Error("Unauthorized");
-  
+
   // Database operations with Drizzle
   return await db().update(videos).set({ ... }).where(eq(videos.id, id));
 }
@@ -220,7 +219,6 @@ const updateMutation = useMutation({
 
 ### Build/Client (selected)
 - `NEXT_PUBLIC_WEB_URL`
-- `NEXT_PUBLIC_CAP_AWS_BUCKET`, `NEXT_PUBLIC_CAP_AWS_REGION`
 - `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST`
 - `NEXT_PUBLIC_DOCKER_BUILD` (enables Next.js standalone output)
 
@@ -268,7 +266,7 @@ const updateMutation = useMutation({
 - **Connection errors**: Verify Docker containers are running
 - **Schema drift**: Run `pnpm --dir packages/database db:check`
 
-### Desktop App Issues  
+### Desktop App Issues
 - **IPC binding errors**: Restart dev server to regenerate `tauri.ts`
 - **Rust compile errors**: Check Cargo.toml dependencies
 - **Permission issues**: macOS/Windows may require app permissions
@@ -335,13 +333,39 @@ Minimize `useEffect` usage: compute during render, handle logic in event handler
 - Loading: Use static skeletons that mirror content; no bouncing animations.
 - Performance: Memoize expensive work; code-split naturally; use Next/Image for remote assets.
 
+## Effect Patterns
+
+### Managed Runtimes
+- `apps/web/lib/server.ts` builds a `ManagedRuntime` from `Layer.mergeAll` so database, S3, policy, and tracing services are available to every request. Always run server-side effects through `EffectRuntime.runPromise`/`runPromiseExit` from this module so cookie-derived context and `VideoPasswordAttachment` are attached automatically.
+- `apps/web/lib/EffectRuntime.ts` exposes a browser runtime that merges the RPC client and tracing layers. Client code should lean on `useEffectQuery`, `useEffectMutation`, and `useRpcClient`; never call `ManagedRuntime.make` yourself inside components.
+
+### API Route Construction
+- Next.js API folders under `apps/web/app/api/*` wrap Effect handlers with `@effect/platform`'s `HttpApi`/`HttpApiBuilder`. Follow the existing pattern: declare a contract class via `HttpApi.make`, configure groups/endpoints with `Schema`, and only export the `handler` returned by `apiToHandler(ApiLive)`.
+- Inside `HttpApiBuilder.group` blocks, acquire services (e.g., `Videos`, `S3Buckets`) with `yield*` inside `Effect.gen`. Provide layers using `Layer.provide` rather than manual `provideService` calls so dependencies stay declarative.
+- Map domain-level errors to transport errors with `HttpApiError.*`. Keep error translation exhaustive (`Effect.catchTags`, `Effect.tapErrorCause(Effect.logError)`) to preserve observability.
+- Use `HttpAuthMiddleware` for required auth and `provideOptionalAuth` when guests are allowed. The middleware/utility already hydrate `CurrentUser`, so avoid duplicating session lookups in route handlers.
+- Shared HTTP contracts that power the desktop app live in `packages/web-api-contract-effect`; update them alongside route changes to keep schemas in sync.
+
+### Server Components & Effects
+- Server components that need Effect services should call `EffectRuntime.runPromise(effect.pipe(provideOptionalAuth))`. This keeps request cookies, tracing spans, and optional auth consistent with the API layer.
+- Prefer lifting Drizzle queries or other async work into `Effect.gen` blocks and reusing domain services (`Videos`, `VideosPolicy`, etc.) rather than writing ad-hoc logic.
+
+### Client Integration
+- React Query hooks should wrap Effect workflows with `useEffectQuery`/`useEffectMutation` from `apps/web/lib/EffectRuntime.ts`; these helpers surface Fail/Die causes consistently and plug into tracing/span metadata.
+- When a mutation or query needs the RPC transport, resolve it through `useRpcClient()` and invoke the strongly-typed procedures exposed by `packages/web-domain` instead of reaching into fetch directly.
+
 ## Desktop (Solid + Tauri) Patterns
 - Data fetching: `@tanstack/solid-query` for server state.
 - IPC: Call generated `commands` and `events` from `tauri_specta`. Listen directly to generated events and prefer the typed interfaces.
 - Windowing/permissions are handled in Rust; keep UI logic in Solid and avoid mixing IPC with rendering logic.
 
 ## Conventions
-- No code comments: Never add inline, block, or docstring comments in any language. Code must be self-explanatory through naming, types, and structure. Use docs/READMEs for explanations when necessary.
+- **CRITICAL: NO CODE COMMENTS**: Never add any form of comments to code. This includes:
+  - Single-line comments: `//` (JavaScript/TypeScript/Rust), `#` (Python/Shell)
+  - Multi-line comments: `/* */` (JavaScript/TypeScript), `/* */` (Rust)
+  - Documentation comments: `///`, `//!` (Rust), `/** */` (JSDoc)
+  - Any other comment syntax in any language
+  - Code must be self-explanatory through naming, types, and structure. Use docs/READMEs for explanations when necessary.
 - Directory naming: lower-case-dashed
 - Components: PascalCase; hooks: camelCase starting with `use`
 - Strict TypeScript; avoid `any`; leverage shared types
@@ -371,8 +395,8 @@ Minimize `useEffect` usage: compute during render, handle logic in event handler
 
 ### Media Processing Flow
 ```
-Desktop Recording → Local Files → Upload to S3 → 
-Background Processing (tasks service) → 
+Desktop Recording → Local Files → Upload to S3 →
+Background Processing (tasks service) →
 Transcription/AI Enhancement → Database Storage
 ```
 
@@ -395,3 +419,11 @@ Transcription/AI Enhancement → Database Storage
 - **Monorepo Guide**: Turborepo documentation
 - **Effect System**: Used in web-backend packages
 - **Media Processing**: FFmpeg documentation for Rust bindings
+
+## Code Formatting
+
+Always format code before completing work:
+- **TypeScript/JavaScript**: Run `pnpm format` to format all code with Biome
+- **Rust**: Run `cargo fmt` to format all Rust code with rustfmt
+
+These commands should be run regularly during development and always at the end of a coding session to ensure consistent formatting across the codebase.

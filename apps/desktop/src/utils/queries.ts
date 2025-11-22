@@ -7,10 +7,14 @@ import {
 	useQuery,
 } from "@tanstack/solid-query";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { createMemo } from "solid-js";
+import { createEffect, createMemo } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { useRecordingOptions } from "~/routes/(window-chrome)/OptionsContext";
-import { authStore, generalSettingsStore } from "~/store";
+import {
+	authStore,
+	generalSettingsStore,
+	recordingSettingsStore,
+} from "~/store";
 import { createQueryInvalidate } from "./events";
 import {
 	type CameraInfo,
@@ -19,7 +23,7 @@ import {
 	type RecordingMode,
 	type ScreenCaptureTarget,
 } from "./tauri";
-import { orgCustomDomainClient, protectedHeaders } from "./web-api";
+import { apiClient, orgCustomDomainClient, protectedHeaders } from "./web-api";
 
 export const listWindows = queryOptions({
 	queryKey: ["capture", "windows"] as const,
@@ -35,12 +39,36 @@ export const listWindows = queryOptions({
 		return w;
 	},
 	reconcile: "id",
-	refetchInterval: 1000,
+	refetchInterval: false,
 });
 
 export const listScreens = queryOptions({
 	queryKey: ["capture", "displays"] as const,
 	queryFn: () => commands.listCaptureDisplays(),
+	reconcile: "id",
+	refetchInterval: 1000,
+});
+
+export const listWindowsWithThumbnails = queryOptions({
+	queryKey: ["capture", "windows-thumbnails"] as const,
+	queryFn: async () => {
+		const w = await commands.listWindowsWithThumbnails();
+
+		w.sort(
+			(a, b) =>
+				a.owner_name.localeCompare(b.owner_name) ||
+				a.name.localeCompare(b.name),
+		);
+
+		return w;
+	},
+	reconcile: "id",
+	refetchInterval: false,
+});
+
+export const listDisplaysWithThumbnails = queryOptions({
+	queryKey: ["capture", "displays-thumbnails"] as const,
+	queryFn: () => commands.listDisplaysWithThumbnails(),
 	reconcile: "id",
 	refetchInterval: 1000,
 });
@@ -84,6 +112,12 @@ export const getPermissions = queryOptions({
 	refetchInterval: 1000,
 });
 
+export const isSystemAudioSupported = queryOptions({
+	queryKey: ["systemAudioSupported"] as const,
+	queryFn: () => commands.isSystemAudioCaptureSupported(),
+	staleTime: Number.POSITIVE_INFINITY, // This won't change during runtime
+});
+
 export function createOptionsQuery() {
 	const PERSIST_KEY = "recording-options-query-2";
 	const [_state, _setState] = createStore<{
@@ -93,6 +127,7 @@ export function createOptionsQuery() {
 		captureSystemAudio?: boolean;
 		targetMode?: "display" | "window" | "area" | null;
 		cameraID?: DeviceOrModelID | null;
+		organizationId?: string | null;
 		/** @deprecated */
 		cameraLabel: string | null;
 	}>({
@@ -100,18 +135,26 @@ export function createOptionsQuery() {
 		micName: null,
 		cameraLabel: null,
 		mode: "studio",
+		organizationId: null,
 	});
 
 	createEventListener(window, "storage", (e) => {
 		if (e.key === PERSIST_KEY) _setState(JSON.parse(e.newValue ?? "{}"));
 	});
 
-	const [state, setState] = makePersisted([_state, _setState], {
-		name: PERSIST_KEY,
+	createEffect(() => {
+		recordingSettingsStore.set({
+			target: _state.captureTarget,
+			micName: _state.micName,
+			cameraId: _state.cameraID,
+			mode: _state.mode,
+			systemAudio: _state.captureSystemAudio,
+			organizationId: _state.organizationId,
+		});
 	});
 
-	createEventListener(window, "storage", (e) => {
-		if (e.key === PERSIST_KEY) setState(JSON.parse(e.newValue ?? "{}"));
+	const [state, setState] = makePersisted([_state, _setState], {
+		name: PERSIST_KEY,
 	});
 
 	return { rawOptions: state, setOptions: setState };
@@ -155,18 +198,26 @@ export function createCameraMutation() {
 	const rawMutate = async (model: DeviceOrModelID | null) => {
 		const before = rawOptions.cameraID ? { ...rawOptions.cameraID } : null;
 		setOptions("cameraID", reconcile(model));
-		if (model) {
-			await commands.showWindow("Camera");
-			getCurrentWindow().setFocus();
-		}
-
 		await commands.setCameraInput(model).catch(async (e) => {
+			const message =
+				typeof e === "string" ? e : e instanceof Error ? e.message : String(e);
+
+			if (message.includes("DeviceNotFound")) {
+				setOptions("cameraID", null);
+				console.warn("Selected camera is unavailable.");
+				return;
+			}
+
 			if (JSON.stringify(before) === JSON.stringify(model) || !before) {
 				setOptions("cameraID", null);
 			} else setOptions("cameraID", reconcile(before));
 
 			throw e;
 		});
+
+		if (model) {
+			getCurrentWindow().setFocus();
+		}
 	};
 
 	const setCameraInput = useMutation(() => ({
@@ -203,4 +254,20 @@ export function createCustomDomainQuery() {
 		refetchOnMount: true,
 		refetchOnWindowFocus: true,
 	}));
+}
+
+export function createOrganizationsQuery() {
+	const auth = authStore.createQuery();
+
+	// Refresh organizations if they're missing
+	createEffect(() => {
+		if (
+			auth.data?.user_id &&
+			(!auth.data?.organizations || auth.data.organizations.length === 0)
+		) {
+			commands.updateAuthPlan().catch(console.error);
+		}
+	});
+
+	return () => auth.data?.organizations ?? [];
 }

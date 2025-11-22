@@ -1,19 +1,24 @@
 import { LogoSpinner } from "@cap/ui";
-import { useQuery } from "@tanstack/react-query";
+import type { Video } from "@cap/web-domain";
 import clsx from "clsx";
+import { Effect } from "effect";
 import moment from "moment";
 import Image from "next/image";
-import { memo, useEffect, useRef, useState } from "react";
-import { useUploadingContext } from "@/app/(org)/dashboard/caps/UploadingContext";
+import { memo, useEffect, useRef } from "react";
+import { useEffectQuery } from "@/lib/EffectRuntime";
+import { ThumbnailRequest } from "@/lib/Requests/ThumbnailRequest";
+
+export type ImageLoadingStatus = "loading" | "success" | "error";
 
 interface VideoThumbnailProps {
-	userId: string;
-	videoId: string;
+	videoId: Video.VideoId;
 	alt: string;
 	imageClass?: string;
 	objectFit?: string;
 	containerClass?: string;
 	videoDuration?: number;
+	imageStatus: ImageLoadingStatus;
+	setImageStatus: (status: ImageLoadingStatus) => void;
 }
 
 const formatDuration = (durationSecs: number) => {
@@ -43,47 +48,36 @@ function generateRandomGrayScaleColor() {
 	return `rgb(${grayScaleValue}, ${grayScaleValue}, ${grayScaleValue})`;
 }
 
+export const useThumnailQuery = (videoId: Video.VideoId) => {
+	return useEffectQuery({
+		queryKey: ThumbnailRequest.queryKey(videoId),
+		queryFn: Effect.fn(function* () {
+			return yield* Effect.request(
+				new ThumbnailRequest.ThumbnailRequest({ videoId }),
+				yield* ThumbnailRequest.DataLoaderResolver,
+			);
+		}),
+	});
+};
+
 export const VideoThumbnail: React.FC<VideoThumbnailProps> = memo(
 	({
-		userId,
 		videoId,
 		alt,
 		imageClass,
 		objectFit = "cover",
 		containerClass,
 		videoDuration,
+		imageStatus,
+		setImageStatus,
 	}) => {
-		const imageUrl = useQuery({
-			queryKey: ["thumbnail", userId, videoId],
-			queryFn: async () => {
-				const cacheBuster = new Date().getTime();
-				const response = await fetch(
-					`/api/thumbnail?userId=${userId}&videoId=${videoId}&t=${cacheBuster}`,
-				);
-				if (response.ok) {
-					const data = await response.json();
-					return data.screen;
-				} else {
-					throw new Error("Failed to fetch pre-signed URLs");
-				}
-			},
-		});
+		const thumbnailUrl = useThumnailQuery(videoId);
 		const imageRef = useRef<HTMLImageElement>(null);
-
-		const { uploadingCapId } = useUploadingContext();
-
-		useEffect(() => {
-			imageUrl.refetch();
-		}, [imageUrl.refetch, uploadingCapId]);
 
 		const randomGradient = `linear-gradient(to right, ${generateRandomGrayScaleColor()}, ${generateRandomGrayScaleColor()})`;
 
-		const [imageStatus, setImageStatus] = useState<
-			"loading" | "error" | "success"
-		>("loading");
-
 		useEffect(() => {
-			if (imageRef.current?.complete && imageRef.current.naturalWidth != 0) {
+			if (imageRef.current?.complete && imageRef.current.naturalWidth !== 0) {
 				setImageStatus("success");
 			}
 		}, []);
@@ -96,39 +90,40 @@ export const VideoThumbnail: React.FC<VideoThumbnailProps> = memo(
 				)}
 			>
 				<div className="flex absolute inset-0 z-10 justify-center items-center">
-					{imageUrl.isError || imageStatus === "error" ? (
+					{thumbnailUrl.isError || imageStatus === "error" ? (
 						<div
 							className="w-full h-full"
 							style={{ backgroundImage: randomGradient }}
 						/>
 					) : (
-						(imageUrl.isPending || imageStatus === "loading") && (
+						(thumbnailUrl.isPending || imageStatus === "loading") && (
 							<LogoSpinner className="w-5 h-auto animate-spin md:w-8" />
 						)
 					)}
 				</div>
-				{videoDuration && (
-					<p className="text-white leading-0 px-2 left-3 rounded-full backdrop-blur-sm absolute z-10 bottom-3 bg-black/50 text-[11px]">
-						{formatDuration(videoDuration)}
-					</p>
-				)}
-				{imageUrl.data && (
+				{thumbnailUrl.data && (
 					<Image
 						ref={imageRef}
-						src={imageUrl.data}
+						src={thumbnailUrl.data}
+						unoptimized
 						fill={true}
 						sizes="(max-width: 768px) 100vw, 33vw"
 						alt={alt}
 						key={videoId}
 						style={{ objectFit: objectFit as any }}
 						className={clsx(
-							"w-full h-full",
+							"w-full h-full rounded-t-xl",
 							imageClass,
 							imageStatus === "loading" && "opacity-0",
 						)}
 						onLoad={() => setImageStatus("success")}
 						onError={() => setImageStatus("error")}
 					/>
+				)}
+				{videoDuration && (
+					<p className="text-white leading-0 px-2 left-3 rounded-full backdrop-blur-sm absolute z-10 bottom-3 bg-black/50 text-[11px]">
+						{formatDuration(videoDuration)}
+					</p>
 				)}
 			</div>
 		);
