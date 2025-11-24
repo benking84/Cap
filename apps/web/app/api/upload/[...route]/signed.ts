@@ -173,7 +173,7 @@ app.post(
 						height: updateIfDefined(height, videos.height),
 						fps: updateIfDefined(fps, videos.fps),
 					})
-					.where(and(eq(videos.id, videoIdToUse), eq(videos.ownerId, user.id)));
+					.where(and(eq(videos.id, videoIdToUse as any), eq(videos.ownerId, user.id)));
 
 			if (videoIdFromKey) {
 				try {
