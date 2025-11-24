@@ -33,15 +33,13 @@ export async function POST(request: NextRequest) {
 		}
 
 		const [organizationOwner] = await db()
-			.select({
-				stripeSubscriptionId: users.stripeSubscriptionId,
-			})
+			.select()
 			.from(users)
 			.where(eq(users.id, invite.invitedByUserId));
 
-		if (!organizationOwner || !organizationOwner.stripeSubscriptionId) {
+		if (!organizationOwner) {
 			return NextResponse.json(
-				{ error: "Organization owner not found or has no subscription" },
+				{ error: "Organization owner not found" },
 				{ status: 404 },
 			);
 		}

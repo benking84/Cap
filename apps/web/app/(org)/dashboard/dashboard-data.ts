@@ -27,7 +27,6 @@ export type Organization = {
 		> & { image?: ImageUpload.ImageUrl | null };
 	})[];
 	invites: (typeof organizationInvites.$inferSelect)[];
-	inviteQuota: number;
 	totalInvites: number;
 };
 
@@ -59,7 +58,6 @@ export async function getDashboardData(user: typeof userSelectProps) {
 					name: users.name,
 					lastName: users.lastName,
 					email: users.email,
-					inviteQuota: users.inviteQuota,
 					image: users.image,
 					defaultOrgId: users.defaultOrgId,
 				},
@@ -297,16 +295,6 @@ export async function getDashboardData(user: typeof userSelectProps) {
 								.where(eq(organizationMembers.organizationId, organization.id)),
 						);
 
-						const owner = yield* db.use((db) =>
-							db
-								.select({
-									inviteQuota: users.inviteQuota,
-								})
-								.from(users)
-								.where(eq(users.id, organization.ownerId))
-								.then((result) => result[0]),
-						);
-
 						const totalInvitesResult = yield* db.use((db) =>
 							db
 								.select({
@@ -361,7 +349,6 @@ export async function getDashboardData(user: typeof userSelectProps) {
 							invites: organizationInvitesData.filter(
 								(invite) => invite.organizationId === organization.id,
 							),
-							inviteQuota: owner?.inviteQuota || 1,
 							totalInvites,
 						};
 					}),
