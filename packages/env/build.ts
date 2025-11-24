@@ -17,6 +17,8 @@ const create = () =>
 		NEXT_PUBLIC_CAP_AWS_ENDPOINT: z.string().optional(),
 		NEXT_PUBLIC_CAP_AWS_BUCKET_URL: z.string().optional(),
 		NEXT_PUBLIC_DOCKER_BUILD: z.string().optional(),
+		NEXT_PUBLIC_META_PIXEL_ID: z.string().optional(),
+		NEXT_PUBLIC_GOOGLE_AW_ID: z.string().optional(),
 	},
 	runtimeEnv: {
 		NEXT_PUBLIC_IS_CAP: process.env.NEXT_PUBLIC_IS_CAP,
@@ -32,6 +34,8 @@ const create = () =>
 		NEXT_PUBLIC_CAP_AWS_BUCKET_URL:
 			process.env.CAP_AWS_URL ?? process.env.NEXT_PUBLIC_CAP_AWS_BUCKET_URL,
 		NEXT_PUBLIC_DOCKER_BUILD: process.env.NEXT_PUBLIC_DOCKER_BUILD,
+		NEXT_PUBLIC_META_PIXEL_ID: process.env.NEXT_PUBLIC_META_PIXEL_ID,
+		NEXT_PUBLIC_GOOGLE_AW_ID: process.env.NEXT_PUBLIC_GOOGLE_AW_ID,
 	},
 	});
 
