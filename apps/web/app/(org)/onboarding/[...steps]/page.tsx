@@ -1,7 +1,6 @@
 import { getCurrentUser } from "@cap/database/auth/session";
 import { CustomDomainPage } from "../components/CustomDomainPage";
 import { DownloadPage } from "../components/DownloadPage";
-import { InviteTeamPage } from "../components/InviteTeamPage";
 import { OrganizationSetupPage } from "../components/OrganizationSetupPage";
 import { WelcomePage } from "../components/WelcomePage";
 
@@ -13,7 +12,6 @@ export default async function OnboardingStepPage({
 			| "welcome"
 			| "organization-setup"
 			| "custom-domain"
-			| "invite-team"
 			| "download";
 	}>;
 }) {
@@ -28,8 +26,6 @@ export default async function OnboardingStepPage({
 		}
 		case "custom-domain":
 			return <CustomDomainPage />;
-		case "invite-team":
-			return <InviteTeamPage />;
 		case "download":
 			return <DownloadPage />;
 		default:

@@ -24,27 +24,20 @@ import { removeOrganizationInvite } from "@/actions/organization/remove-invite";
 import { removeOrganizationMember } from "@/actions/organization/remove-member";
 import { ConfirmationDialog } from "@/app/(org)/dashboard/_components/ConfirmationDialog";
 import { useDashboardContext } from "@/app/(org)/dashboard/Contexts";
-import { Tooltip } from "@/components/Tooltip";
-import { calculateSeats } from "@/utils/organization";
 
 interface MembersCardProps {
 	isOwner: boolean;
-	loading: boolean;
-	handleManageBilling: () => Promise<void>;
 	showOwnerToast: () => void;
 	setIsInviteDialogOpen: (isOpen: boolean) => void;
 }
 
 export const MembersCard = ({
 	isOwner,
-	loading,
-	handleManageBilling,
 	showOwnerToast,
 	setIsInviteDialogOpen,
 }: MembersCardProps) => {
 	const router = useRouter();
 	const { activeOrganization } = useDashboardContext();
-	const { remainingSeats } = calculateSeats(activeOrganization || {});
 
 	const handleDeleteInvite = async (inviteId: string) => {
 		if (!isOwner) {
@@ -147,24 +140,6 @@ export const MembersCard = ({
 						<CardDescription>Manage your organization members.</CardDescription>
 					</CardHeader>
 					<div className="flex flex-wrap gap-3">
-						{buildEnv.NEXT_PUBLIC_IS_CAP && (
-							<Tooltip
-								position="top"
-								content="Once inside the Stripe dashboard, click 'Manage Plan', then increase quantity of subscriptions to purchase more seats"
-							>
-								<Button
-									type="button"
-									size="sm"
-									variant="primary"
-									className="px-6 min-w-auto"
-									spinner={loading}
-									disabled={!isOwner || loading}
-									onClick={handleManageBilling}
-								>
-									{loading ? "Loading..." : "+ Purchase more seats"}
-								</Button>
-							</Tooltip>
-						)}
 						<Button
 							type="button"
 							size="sm"
@@ -173,10 +148,6 @@ export const MembersCard = ({
 							onClick={() => {
 								if (!isOwner) {
 									showOwnerToast();
-								} else if (remainingSeats <= 0) {
-									toast.error(
-										"Invite limit reached, please purchase more seats",
-									);
 								} else {
 									setIsInviteDialogOpen(true);
 								}

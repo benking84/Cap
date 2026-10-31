@@ -13,7 +13,6 @@ export default function Stepper({
 		welcome?: boolean;
 		organizationSetup?: boolean;
 		customDomain?: boolean;
-		inviteTeam?: boolean;
 		download?: boolean;
 	};
 }) {
@@ -23,7 +22,6 @@ export default function Stepper({
 		if (currentPath === "/onboarding/organization-setup")
 			return "Organization Setup";
 		if (currentPath === "/onboarding/custom-domain") return "Custom Domain";
-		if (currentPath === "/onboarding/invite-team") return "Invite your team";
 		if (currentPath === "/onboarding/download") return "Download";
 	}, [currentPath]);
 
@@ -45,11 +43,6 @@ export default function Stepper({
 		},
 		{
 			id: "4",
-			name: "Invite your team",
-			completed: completedSteps.inviteTeam || false,
-		},
-		{
-			id: "5",
 			name: "Download",
 			completed: completedSteps.download || false,
 		},

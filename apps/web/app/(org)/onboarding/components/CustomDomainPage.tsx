@@ -23,7 +23,7 @@ export function CustomDomainPage() {
 		onSuccess: (_, redirect) => {
 			startTransition(() => {
 				if (redirect) {
-					router.push("/onboarding/invite-team");
+					router.push("/onboarding/download");
 					router.refresh();
 				}
 			});

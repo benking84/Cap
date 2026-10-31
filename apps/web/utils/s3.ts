@@ -36,6 +36,7 @@ import * as S3Presigner from "@aws-sdk/s3-request-presigner";
 import { decrypt } from "@cap/database/crypto";
 import type { s3Buckets } from "@cap/database/schema";
 import { serverEnv } from "@cap/env";
+import { S3_BUCKET_URL } from "@cap/utils";
 import type {
     RequestPresigningArguments,
     StreamingBlobPayloadInputTypes,
